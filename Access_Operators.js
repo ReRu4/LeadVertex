@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.1.0
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
@@ -45,7 +45,7 @@
         9: { group: "5", type: "2" },
     };
 
-    console.log("походу работает");
+    console.log("Скрипт загружен.");
 
     if (location.href.includes("settings.html")) {
         const dialog = document.createElement('div');
@@ -190,19 +190,23 @@
     }
 
     if (location.href.includes("rules.html")) {
-        const selectedLinks = JSON.parse(sessionStorage.getItem('selectedLinks') || "[]");
-        const blocksData = JSON.parse(sessionStorage.getItem('blocksData') || "[]");
-        const action = sessionStorage.getItem('action');
-        const use15Columns = JSON.parse(sessionStorage.getItem('use15Columns'));
-        const columnMap = use15Columns ? columnMap15 : columnMap9;
-        const enable = action === "включить";
+    const selectedLinks = JSON.parse(sessionStorage.getItem('selectedLinks') || "[]");
+    const blocksData = JSON.parse(sessionStorage.getItem('blocksData') || "[]");
+    const action = sessionStorage.getItem('action');
+    const use15Columns = JSON.parse(sessionStorage.getItem('use15Columns'));
+    const columnMap = use15Columns ? columnMap15 : columnMap9;
+    const enable = action === "включить";
 
-        if (!selectedLinks.length || !blocksData.length) {
-            console.log("Нет данных для обработки.");
-            return;
-        }
+    // Флаг для предотвращения повторного запуска
+    let isProcessing = false;
 
-        function processCheckboxes(targetUsers, columns, enable) {
+    if (!selectedLinks.length || !blocksData.length) {
+        console.log("Нет данных для обработки.");
+        return;
+    }
+
+    async function processCurrentPage(targetUsers, columns, enable) {
+        return new Promise(resolve => {
             const rows = document.querySelectorAll("tr");
             rows.forEach(row => {
                 const usernameElement = row.querySelector("td:first-child");
@@ -222,19 +226,48 @@
                     });
                 }
             });
-        }
 
-        blocksData.forEach(({ columns, users }) => {
-            processCheckboxes(users, columns, enable);
+            // Ждем завершения взаимодействия с DOM
+            setTimeout(resolve, 500); // Регулируйте задержку при необходимости
         });
-
-        selectedLinks.shift();
-        sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks));
-        if (selectedLinks.length > 0) {
-            window.location.href = selectedLinks[0];
-        } else {
-            alert("Обработка завершена.");
-            sessionStorage.clear();
-        }
     }
+
+    async function processPages() {
+        // Проверяем, чтобы скрипт запускался только один раз
+        if (isProcessing) {
+            console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
+            return;
+        }
+
+        isProcessing = true; // Устанавливаем флаг обработки
+
+        for (let i = 0; i < selectedLinks.length; i++) {
+            const link = selectedLinks[i];
+            console.log(`Обрабатываем проект: ${link}`);
+
+            // Выполняем обработку для текущей страницы
+            for (const { columns, users } of blocksData) {
+                console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
+                await processCurrentPage(users, columns, enable);
+            }
+
+            // Если это не последний проект, переходим к следующему
+            if (i < selectedLinks.length - 1) {
+                console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
+                sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
+                window.location.href = selectedLinks[i + 1];
+                return;
+            }
+        }
+
+        // Завершаем обработку после последнего проекта
+        alert("Обработка завершена.");
+        sessionStorage.clear();
+        isProcessing = false; // Сбрасываем флаг обработки
+    }
+
+    processPages();
+}
+
+
 })();
