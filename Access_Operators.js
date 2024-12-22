@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Автоматизация настроек доступа с добавлением полей
+// @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
 // @version      1.0.0
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    const columnMap = {
+    const columnMap15 = {
         1: { group: "1", type: "0" },
         2: { group: "1", type: "1" },
         3: { group: "1", type: "2" },
@@ -32,15 +32,33 @@
         14: { group: "5", type: "1" },
         15: { group: "5", type: "2" },
     };
+
+    const columnMap9 = {
+        1: { group: "1", type: "0" },
+        2: { group: "1", type: "1" },
+        3: { group: "1", type: "2" },
+        4: { group: "2", type: "0" },
+        5: { group: "2", type: "1" },
+        6: { group: "2", type: "2" },
+        7: { group: "5", type: "0" },
+        8: { group: "5", type: "1" },
+        9: { group: "5", type: "2" },
+    };
+
     console.log("походу работает");
 
     if (location.href.includes("settings.html")) {
         const dialog = document.createElement('div');
         dialog.innerHTML = `
             <div style="position: fixed; top: 50%; right: 0; transform: translateY(-50%); background: white; border: 1px solid black; padding: 15px; z-index: 1000; width: 200px;">
+                <label style="display: flex; align-items: center;">
+                    <input type="checkbox" id="columnRangeToggle" style="margin-right: 10px;">
+                    Включить 15 колонок
+                </label>
+                <br>
                 <label>Выберите таблицы:<br>
                     <button id="toggleButton" style="width: 100%; margin-bottom: 5px;">Развернуть/Свернуть список</button>
-                    <div id="namesList" style="display: none; position: fixed; top: 10%; left: 10%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: white; z-index: 1001; width: 200px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
+                    <div id="namesList" style="display: none; position: fixed; top: 25%; left: 10%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: white; z-index: 1001; width: 200px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
                 </label>
                 <br>
                 <div id="fieldsContainer" style="max-height: 350px; overflow-y: auto; overflow-x: hidden; padding: 0; margin: 0;">
@@ -137,6 +155,7 @@
         document.getElementById('confirmButton').addEventListener('click', () => {
             const selectedLinks = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked')).map(cb => cb.value);
             const action = document.getElementById('actionSelect').value;
+            const use15Columns = document.getElementById('columnRangeToggle').checked;
 
             if (!selectedLinks.length) {
                 alert("Выберите хотя бы одну таблицу.");
@@ -144,6 +163,7 @@
             }
 
             sessionStorage.setItem('action', action);
+            sessionStorage.setItem('use15Columns', use15Columns);
 
             const fieldBlocks = document.querySelectorAll('.fieldBlock');
             const blocksData = Array.from(fieldBlocks).map(block => {
@@ -173,6 +193,8 @@
         const selectedLinks = JSON.parse(sessionStorage.getItem('selectedLinks') || "[]");
         const blocksData = JSON.parse(sessionStorage.getItem('blocksData') || "[]");
         const action = sessionStorage.getItem('action');
+        const use15Columns = JSON.parse(sessionStorage.getItem('use15Columns'));
+        const columnMap = use15Columns ? columnMap15 : columnMap9;
         const enable = action === "включить";
 
         if (!selectedLinks.length || !blocksData.length) {
