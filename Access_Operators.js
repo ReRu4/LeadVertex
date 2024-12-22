@@ -32,6 +32,7 @@
         14: { group: "5", type: "1" },
         15: { group: "5", type: "2" },
     };
+    console.log("Тест");
 
     if (location.href.includes("settings.html")) {
         const dialog = document.createElement('div');
