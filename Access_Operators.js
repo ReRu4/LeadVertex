@@ -8,8 +8,8 @@
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=5
 // @match        *://leadvertex.ru/admin/callmodeNew/rules.html*
 // @grant        none
-// @updateURL    https://ReRu:gldt-JMoB6UV7AwwRManxoQ7n@gitlab.com/intertrade/access-opetators-ao-dz/-/raw/main/Access_Operators.js
-// @downloadURL  https://ReRu:gldt-JMoB6UV7AwwRManxoQ7n@gitlab.com/intertrade/access-opetators-ao-dz/-/raw/main/Access_Operators.js
+// @updateURL    https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
+// @downloadURL  https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
 // ==/UserScript==
 
 (function () {
