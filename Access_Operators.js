@@ -206,65 +206,70 @@
     }
 
     async function processCurrentPage(targetUsers, columns, enable) {
-        return new Promise(resolve => {
-            const rows = document.querySelectorAll("tr");
-            rows.forEach(row => {
-                const usernameElement = row.querySelector("td:first-child");
-                const username = usernameElement?.textContent?.trim().toLowerCase();
+    return new Promise(resolve => {
+        let totalCheckboxes = 0; // Считаем общее количество чекбоксов
+        const rows = document.querySelectorAll("tr");
+        rows.forEach(row => {
+            const usernameElement = row.querySelector("td:first-child");
+            const username = usernameElement?.textContent?.trim().toLowerCase();
 
-                if (username && targetUsers.includes(username)) {
-                    columns.forEach(column => {
-                        const { group, type } = columnMap[column];
-                        const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
-                        if (checkbox) {
-                            if (enable && !checkbox.checked) {
-                                checkbox.click();
-                            } else if (!enable && checkbox.checked) {
-                                checkbox.click();
-                            }
+            if (username && targetUsers.includes(username)) {
+                columns.forEach(column => {
+                    const { group, type } = columnMap[column];
+                    const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
+                    if (checkbox) {
+                        totalCheckboxes++;
+                        if (enable && !checkbox.checked) {
+                            checkbox.click();
+                        } else if (!enable && checkbox.checked) {
+                            checkbox.click();
                         }
-                    });
-                }
-            });
-
-            // Ждем завершения взаимодействия с DOM
-            setTimeout(resolve, 700);
+                    }
+                });
+            }
         });
+
+        // Задержка зависит от общего числа чекбоксов
+        const delay = Math.max(totalCheckboxes * 100, 1000); // Минимум 1 секунда
+        console.log(`Задержка на странице: ${delay} мс для ${totalCheckboxes} чекбоксов.`);
+        setTimeout(resolve, delay);
+    });
+}
+
+async function processPages() {
+    if (isProcessing) {
+        console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
+        return;
     }
 
-    async function processPages() {
-        // Проверяем, чтобы скрипт запускался только один раз
-        if (isProcessing) {
-            console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
+    isProcessing = true; // Устанавливаем флаг обработки
+
+    for (let i = 0; i < selectedLinks.length; i++) {
+        const link = selectedLinks[i];
+        console.log(`Обрабатываем проект: ${link}`);
+
+        let totalCheckboxes = 0; // Суммируем чекбоксы для вычисления общей задержки
+        for (const { columns, users } of blocksData) {
+            console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
+            await processCurrentPage(users, columns, enable);
+            totalCheckboxes += users.length * columns.length; // Оценка общего числа действий
+        }
+
+        console.log(`Всего чекбоксов на текущем проекте: ${totalCheckboxes}`);
+
+        if (i < selectedLinks.length - 1) {
+            console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
+            sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
+            window.location.href = selectedLinks[i + 1];
             return;
         }
-
-        isProcessing = true; // Устанавливаем флаг обработки
-
-        for (let i = 0; i < selectedLinks.length; i++) {
-            const link = selectedLinks[i];
-            console.log(`Обрабатываем проект: ${link}`);
-
-            // Выполняем обработку для текущей страницы
-            for (const { columns, users } of blocksData) {
-                console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
-                await processCurrentPage(users, columns, enable);
-            }
-
-            // Если это не последний проект, переходим к следующему
-            if (i < selectedLinks.length - 1) {
-                console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
-                sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
-                window.location.href = selectedLinks[i + 1];
-                return;
-            }
-        }
-
-        // Завершаем обработку после последнего проекта
-        alert("Обработка завершена.");
-        sessionStorage.clear();
-        isProcessing = false; // Сбрасываем флаг обработки
     }
+
+    alert("Обработка завершена.");
+    sessionStorage.clear();
+    isProcessing = false; // Сбрасываем флаг обработки
+}
+
 
     processPages();
 }
