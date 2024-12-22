@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа с добавлением полей
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
@@ -32,7 +32,7 @@
         14: { group: "5", type: "1" },
         15: { group: "5", type: "2" },
     };
-    console.log("Тест");
+    console.log("УРААААААААААААААА");
 
     if (location.href.includes("settings.html")) {
         const dialog = document.createElement('div');
