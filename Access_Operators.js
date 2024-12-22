@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.2.1
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
@@ -206,19 +206,20 @@
     }
 
     async function processCurrentPage(targetUsers, columns, enable) {
+    let processedOperators = 0;
+
     return new Promise(resolve => {
-        let totalCheckboxes = 0; // Считаем общее количество чекбоксов
         const rows = document.querySelectorAll("tr");
         rows.forEach(row => {
             const usernameElement = row.querySelector("td:first-child");
             const username = usernameElement?.textContent?.trim().toLowerCase();
 
             if (username && targetUsers.includes(username)) {
+                processedOperators++; // Увеличиваем счетчик обработанных операторов
                 columns.forEach(column => {
                     const { group, type } = columnMap[column];
                     const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
                     if (checkbox) {
-                        totalCheckboxes++;
                         if (enable && !checkbox.checked) {
                             checkbox.click();
                         } else if (!enable && checkbox.checked) {
@@ -229,10 +230,8 @@
             }
         });
 
-        // Задержка зависит от общего числа чекбоксов
-        const delay = Math.max(totalCheckboxes * 100, 1000); // Минимум 1 секунда
-        console.log(`Задержка на странице: ${delay} мс для ${totalCheckboxes} чекбоксов.`);
-        setTimeout(resolve, delay);
+        // Задержка для завершения DOM-операций
+        setTimeout(() => resolve(processedOperators), 700);
     });
 }
 
@@ -244,18 +243,33 @@ async function processPages() {
 
     isProcessing = true; // Устанавливаем флаг обработки
 
+    let totalOperatorsToProcess = 0;
+
     for (let i = 0; i < selectedLinks.length; i++) {
         const link = selectedLinks[i];
         console.log(`Обрабатываем проект: ${link}`);
 
-        let totalCheckboxes = 0; // Суммируем чекбоксы для вычисления общей задержки
+        let pageOperators = 0;
+
+        // Обрабатываем всех операторов для текущей страницы
         for (const { columns, users } of blocksData) {
             console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
-            await processCurrentPage(users, columns, enable);
-            totalCheckboxes += users.length * columns.length; // Оценка общего числа действий
+            const processed = await processCurrentPage(users, columns, enable);
+            pageOperators += processed;
         }
 
-        console.log(`Всего чекбоксов на текущем проекте: ${totalCheckboxes}`);
+        // Увеличиваем общий счетчик обработанных операторов
+        totalOperatorsToProcess += pageOperators;
+
+        console.log(`Обработано операторов на странице: ${pageOperators}`);
+        console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
+
+        // Рассчитываем задержку на основе обработанных операторов
+        const delayPerOperator = 500; // Задержка в миллисекундах на одного оператора
+        const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
+
+        console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
+        await new Promise(resolve => setTimeout(resolve, totalDelay));
 
         if (i < selectedLinks.length - 1) {
             console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
@@ -269,8 +283,6 @@ async function processPages() {
     sessionStorage.clear();
     isProcessing = false; // Сбрасываем флаг обработки
 }
-
-
     processPages();
 }
 
