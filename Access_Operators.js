@@ -265,7 +265,7 @@ async function processPages() {
         console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
 
         // Рассчитываем задержку на основе обработанных операторов
-        const delayPerOperator = 25; // Задержка в миллисекундах на одного оператора
+        const delayPerOperator = 40; // Задержка в миллисекундах на одного оператора
         const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
 
         console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
