@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
@@ -37,9 +37,9 @@
         1: { group: "1", type: "0" },
         2: { group: "1", type: "1" },
         3: { group: "1", type: "2" },
-        4: { group: "2", type: "0" },
-        5: { group: "2", type: "1" },
-        6: { group: "2", type: "2" },
+        4: { group: "4", type: "0" },
+        5: { group: "4", type: "1" },
+        6: { group: "4", type: "2" },
         7: { group: "5", type: "0" },
         8: { group: "5", type: "1" },
         9: { group: "5", type: "2" },
