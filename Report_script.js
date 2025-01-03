@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Отчёт с таблицей и текстом
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Save table as an image to clipboard and generate formatted reports
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        https://leadvertex.ru/admin/callmodeNew/settings.html*
@@ -44,6 +44,7 @@
                         await navigator.clipboard.write([
                             new ClipboardItem({ 'image/png': blob })
                         ]);
+                        alert('Таблица сохранена в буфер обмена как изображение!');
                     } catch (error) {
                         console.error('Ошибка записи в буфер обмена:', error);
                         alert('Не удалось сохранить в буфер обмена. Проверьте разрешения.');
@@ -80,6 +81,7 @@
 
         const reportText = reportContainer.textContent;
         navigator.clipboard.writeText(reportText).then(() => {
+            alert('Отчёт скопирован в буфер обмена!');
         }).catch(error => {
             console.error('Ошибка копирования в буфер обмена:', error);
             alert('Не удалось скопировать отчёт. Проверьте разрешения.');
