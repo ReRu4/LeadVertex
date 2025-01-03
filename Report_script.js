@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Отчёт с таблицей и текстом
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Save table as an image to clipboard and generate formatted reports
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        https://leadvertex.ru/admin/callmodeNew/settings.html*
@@ -14,8 +14,9 @@
 (function () {
     'use strict';
 
+    // Create a button to trigger the screenshot
     const screenshotButton = document.createElement('button');
-    screenshotButton.textContent = 'Сделать скрин таблицы';
+    screenshotButton.textContent = 'Сохранить таблицу в буфер';
     screenshotButton.style.position = 'fixed';
     screenshotButton.style.top = '10px';
     screenshotButton.style.right = '10px';
@@ -29,6 +30,7 @@
 
     document.body.appendChild(screenshotButton);
 
+    // Add click event listener for screenshot
     screenshotButton.addEventListener('click', async () => {
         try {
             const table = document.querySelector('.table.callmode-settings');
@@ -44,6 +46,7 @@
                         await navigator.clipboard.write([
                             new ClipboardItem({ 'image/png': blob })
                         ]);
+                        alert('Таблица сохранена в буфер обмена как изображение!');
                     } catch (error) {
                         console.error('Ошибка записи в буфер обмена:', error);
                         alert('Не удалось сохранить в буфер обмена. Проверьте разрешения.');
@@ -56,6 +59,40 @@
         }
     });
 
+    // Create a button to copy the report
+    const copyReportButton = document.createElement('button');
+    copyReportButton.textContent = 'Копировать отчёт';
+    copyReportButton.style.position = 'fixed';
+    copyReportButton.style.top = '50px';
+    copyReportButton.style.right = '10px';
+    copyReportButton.style.zIndex = '9999';
+    copyReportButton.style.padding = '10px';
+    copyReportButton.style.backgroundColor = '#28a745';
+    copyReportButton.style.color = '#fff';
+    copyReportButton.style.border = 'none';
+    copyReportButton.style.borderRadius = '5px';
+    copyReportButton.style.cursor = 'pointer';
+
+    document.body.appendChild(copyReportButton);
+
+    // Add click event listener for copying the report
+    copyReportButton.addEventListener('click', () => {
+        const reportContainer = document.querySelector('div[style*="white-space: pre-line"]');
+        if (!reportContainer) {
+            alert('Отчёт не найден!');
+            return;
+        }
+
+        const reportText = reportContainer.textContent;
+        navigator.clipboard.writeText(reportText).then(() => {
+            alert('Отчёт скопирован в буфер обмена!');
+        }).catch(error => {
+            console.error('Ошибка копирования в буфер обмена:', error);
+            alert('Не удалось скопировать отчёт. Проверьте разрешения.');
+        });
+    });
+
+    // Report generation logic
     const tfootRowSelector = 'tfoot tr';
 
     const categoryHeaders = {
