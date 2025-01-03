@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Отчёт с таблицей и текстом
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Save table as an image to clipboard and generate formatted reports
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        https://leadvertex.ru/admin/callmodeNew/settings.html*
@@ -14,7 +14,6 @@
 (function () {
     'use strict';
 
-    // Create a button to trigger the screenshot
     const screenshotButton = document.createElement('button');
     screenshotButton.textContent = 'Сохранить таблицу в буфер';
     screenshotButton.style.position = 'fixed';
@@ -30,7 +29,6 @@
 
     document.body.appendChild(screenshotButton);
 
-    // Add click event listener for screenshot
     screenshotButton.addEventListener('click', async () => {
         try {
             const table = document.querySelector('.table.callmode-settings');
@@ -59,7 +57,6 @@
         }
     });
 
-    // Create a button to copy the report
     const copyReportButton = document.createElement('button');
     copyReportButton.textContent = 'Копировать отчёт';
     copyReportButton.style.position = 'fixed';
@@ -75,7 +72,6 @@
 
     document.body.appendChild(copyReportButton);
 
-    // Add click event listener for copying the report
     copyReportButton.addEventListener('click', () => {
         const reportContainer = document.querySelector('div[style*="white-space: pre-line"]');
         if (!reportContainer) {
@@ -92,7 +88,6 @@
         });
     });
 
-    // Report generation logic
     const tfootRowSelector = 'tfoot tr';
 
     const categoryHeaders = {
