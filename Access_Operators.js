@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
+// @version      1.2.6
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
@@ -11,7 +11,6 @@
 // @updateURL    https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
 // @downloadURL  https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
 // ==/UserScript==
-
 (function () {
     'use strict';
 
@@ -50,7 +49,7 @@
     if (location.href.includes("settings.html")) {
         const dialog = document.createElement('div');
         dialog.innerHTML = `
-            <div style="position: fixed; top: 50%; right: 0; transform: translateY(-50%); background: white; border: 1px solid black; padding: 15px; z-index: 1000; width: 200px;">
+            <div style="position: fixed; top: 50%; right: 0; transform: translateY(-50%); background: white; border: 1px solid black; padding: 15px; z-index: 9999; width: 200px;">
                 <label style="display: flex; align-items: center;">
                     <input type="checkbox" id="columnRangeToggle" style="margin-right: 10px;">
                     Включить 15 колонок
@@ -73,6 +72,13 @@
                 </div>
                 </div>
                 <button id="addFieldButton" style="margin-bottom: 10px;">Добавить дополнительные поля</button>
+                <br>
+                <label>Шаблоны:<br>
+                    <select id="templateSelect" style="width: 100%; margin-bottom: 5px;">
+                        <option value="">Выберите шаблон</option>
+                        <option value="template1">Шаблон ночников</option>
+                    </select>
+                </label>
                 <br>
                 <label>Выберите действие:<br>
                     <select id="actionSelect" style="width: 100%;">
@@ -148,6 +154,37 @@
             fieldsContainer.appendChild(fieldBlock);
         });
 
+        const templateSelect = document.getElementById('templateSelect');
+        templateSelect.addEventListener('change', (event) => {
+            const selectedTemplate = event.target.value;
+
+            if (selectedTemplate === "template1") {
+                fieldsContainer.innerHTML = '';
+                const templates = [
+                    "1 2 3 9",
+                    "3 4 9",
+                    "4 9",
+                    "5 6 7 9",
+                    "7 8 9"
+                ];
+
+                templates.forEach(template => {
+                    const fieldBlock = document.createElement('div');
+                    fieldBlock.className = 'fieldBlock additionalBlock';
+                    fieldBlock.style.marginBottom = '10px';
+                    fieldBlock.innerHTML = `
+                        <label style="margin-bottom: 3px;">Введите колонки (через пробел):<br>
+                            <input type="text" class="columnsInput" style="width: 180px; font-size: 14px; margin-bottom: 3px; padding: 2px;" value="${template}">
+                        </label>
+                        <br>
+                            <label style="margin-bottom: 3px;">Введите операторов (по строке на каждого):<br>
+                            <textarea rows="3" class="usersInput" style="width: 180px; font-size: 14px; margin-top: 3px; margin-bottom: 5px; padding: 2px; overflow-x: hidden;"></textarea>
+                        </label>
+                    `;
+                    fieldsContainer.appendChild(fieldBlock);
+                });
+            }
+        });
         document.getElementById('closeButton').addEventListener('click', () => {
             dialog.remove();
         });
@@ -230,7 +267,6 @@
             }
         });
 
-        // Задержка для завершения DOM-операций
         setTimeout(() => resolve(processedOperators), 700);
     });
 }
@@ -241,7 +277,7 @@ async function processPages() {
         return;
     }
 
-    isProcessing = true; // Устанавливаем флаг обработки
+    isProcessing = true; 
 
     let totalOperatorsToProcess = 0;
 
@@ -251,14 +287,12 @@ async function processPages() {
 
         let pageOperators = 0;
 
-        // Обрабатываем всех операторов для текущей страницы
         for (const { columns, users } of blocksData) {
             console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
             const processed = await processCurrentPage(users, columns, enable);
             pageOperators += processed;
         }
 
-        // Увеличиваем общий счетчик обработанных операторов
         totalOperatorsToProcess += pageOperators;
 
         console.log(`Обработано операторов на странице: ${pageOperators}`);
@@ -281,7 +315,7 @@ async function processPages() {
 
     alert("Обработка завершена.");
     sessionStorage.clear();
-    isProcessing = false; // Сбрасываем флаг обработки
+    isProcessing = false; 
 }
     processPages();
 }
