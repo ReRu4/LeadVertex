@@ -4,8 +4,12 @@
 // @version      1.2.6
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=2
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=5
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=7
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=8
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=9
 // @match        *://leadvertex.ru/admin/callmodeNew/rules.html*
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
