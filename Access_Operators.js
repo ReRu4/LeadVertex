@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
+// @version      1.3.1
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=2
@@ -60,25 +60,25 @@
                 </label>
                 <br>
                 <label>Выберите таблицы:<br>
-                    <button id="toggleButton" style="width: 100%; margin-bottom: 5px;">Развернуть/Свернуть список</button>
+                    <button id="toggleButton" style="width: 180px; margin-bottom: 5px;">Развернуть/Свернуть список</button>
                     <div id="namesList" style="display: none; position: fixed; top: 25%; left: 10%; width: 200px; max-height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; background: white; z-index: 1001; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
                 </label>
                 <br>
-                <div id="fieldsContainer" style="max-height: 350px; overflow-y: scroll; overflow-x: hidden; padding: 0; margin: 0;">
+                <div id="fieldsContainer" style="max-height: 350px; overflow-y: auto; overflow-x: hidden; padding: 0; margin: 0;">
                 <div class="fieldBlock mainBlock" style="margin-bottom: 5px; padding: 0;">
                     <label style="margin-bottom: 3px;">Введите колонки (через пробел):<br>
-                    <input type="text" class="columnsInput" style="width: 200px; font-size: 14px; margin-bottom: 3px; padding: 2px;">
+                    <input type="text" class="columnsInput" style="width: 180px; font-size: 14px; margin-bottom: 3px; padding: 2px;">
                 </label>
                 <br>
                     <label style="margin-bottom: 3px;">Введите операторов (по строке на каждого):<br>
-                    <textarea rows="3" class="usersInput" style="width: 200px; font-size: 14px; margin-top: 3px; margin-bottom: 5px; padding: 2px; overflow-x: hidden;"></textarea>
+                    <textarea rows="3" class="usersInput" style="width: 180px; font-size: 14px; margin-top: 3px; margin-bottom: 5px; padding: 2px; overflow-x: hidden;"></textarea>
                 </label>
                 </div>
                 </div>
-                <button id="addFieldButton" style="width: 100%;margin-bottom: 10px;">Добавить дополнительные поля</button>
+                <button id="addFieldButton" style="width: 180px;margin-bottom: 10px;">Добавить дополнительные поля</button>
                 <br>
                 <label>Шаблоны:<br>
-                    <select id="templateSelect" style="width: 100%; margin-bottom: 5px;">
+                    <select id="templateSelect" style="width: 180px; margin-bottom: 5px;">
                         <option value="">Выберите шаблон</option>
                         <option value="template1">Шаблон ночников</option>
                         <option value="template2">Стажёры DZ</option>
@@ -86,7 +86,7 @@
                 </label>
                 <br>
                 <label>Выберите действие:<br>
-                    <select id="actionSelect" style="width: 100%;">
+                    <select id="actionSelect" style="width: 180px;">
                         <option value="включить">Включить</option>
                         <option value="отключить">Отключить</option>
                     </select>
