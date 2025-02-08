@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.2.9
+// @version      1.3.0
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=2
@@ -61,10 +61,10 @@
                 <br>
                 <label>Выберите таблицы:<br>
                     <button id="toggleButton" style="width: 100%; margin-bottom: 5px;">Развернуть/Свернуть список</button>
-                    <div id="namesList" style="display: none; position: fixed; top: 25%; left: 10%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: white; z-index: 1001; width: 200px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
+                    <div id="namesList" style="display: none; position: fixed; top: 25%; left: 10%; width: 200px; max-height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; background: white; z-index: 1001; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
                 </label>
                 <br>
-                <div id="fieldsContainer" style="max-height: 350px; overflow-y: auto; overflow-x: hidden; padding: 0; margin: 0;">
+                <div id="fieldsContainer" style="max-height: 350px; overflow-y: scroll; overflow-x: hidden; padding: 0; margin: 0;">
                 <div class="fieldBlock mainBlock" style="margin-bottom: 5px; padding: 0;">
                     <label style="margin-bottom: 3px;">Введите колонки (через пробел):<br>
                     <input type="text" class="columnsInput" style="width: 200px; font-size: 14px; margin-bottom: 3px; padding: 2px;">
@@ -296,7 +296,7 @@
             const username = usernameElement?.textContent?.trim().toLowerCase();
 
             if (username && targetUsers.includes(username)) {
-                processedOperators++; 
+                processedOperators++;
                 columns.forEach(column => {
                     const { group, type } = columnMap[column];
                     const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
@@ -315,54 +315,54 @@
     });
 }
 
-async function processPages() {
-    if (isProcessing) {
-        console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
-        return;
-    }
+        async function processPages() {
+            if (isProcessing) {
+                console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
+                return;
+            }
 
-    isProcessing = true; 
+            isProcessing = true;
 
-    let totalOperatorsToProcess = 0;
+            let totalOperatorsToProcess = 0;
 
-    for (let i = 0; i < selectedLinks.length; i++) {
-        const link = selectedLinks[i];
-        console.log(`Обрабатываем проект: ${link}`);
+            for (let i = 0; i < selectedLinks.length; i++) {
+                const link = selectedLinks[i];
+                console.log(`Обрабатываем проект: ${link}`);
 
-        let pageOperators = 0;
+                let pageOperators = 0;
 
-        for (const { columns, users } of blocksData) {
-            console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
-            const processed = await processCurrentPage(users, columns, enable);
-            pageOperators += processed;
+                for (const { columns, users } of blocksData) {
+                    console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users}`);
+                    const processed = await processCurrentPage(users, columns, enable);
+                    pageOperators += processed;
+                }
+
+                totalOperatorsToProcess += pageOperators;
+
+                console.log(`Обработано операторов на странице: ${pageOperators}`);
+                console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
+
+                // Рассчитываем задержку на основе обработанных операторов
+                const delayPerOperator = 57; // Задержка в миллисекундах на одного оператора
+                const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
+
+                console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
+                await new Promise(resolve => setTimeout(resolve, totalDelay));
+
+                if (i < selectedLinks.length - 1) {
+                    console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
+                    sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
+                    window.location.href = selectedLinks[i + 1];
+                    return;
+                }
+            }
+
+            alert("Обработка завершена.");
+            sessionStorage.clear();
+            isProcessing = false;
         }
-
-        totalOperatorsToProcess += pageOperators;
-
-        console.log(`Обработано операторов на странице: ${pageOperators}`);
-        console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
-
-        // Рассчитываем задержку на основе обработанных операторов
-        const delayPerOperator = 57; // Задержка в миллисекундах на одного оператора
-        const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
-
-        console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
-        await new Promise(resolve => setTimeout(resolve, totalDelay));
-
-        if (i < selectedLinks.length - 1) {
-            console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
-            sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
-            window.location.href = selectedLinks[i + 1];
-            return;
-        }
+        processPages();
     }
-
-    alert("Обработка завершена.");
-    sessionStorage.clear();
-    isProcessing = false; 
-}
-    processPages();
-}
 
 
 })();
