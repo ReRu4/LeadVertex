@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.4.5
+// @version      1.4.6
 // @description  Автоматический выбор названий и настройка доступа с добавлением полей
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=2
@@ -717,7 +717,7 @@
                 console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
 
                 // Рассчитываем задержку на основе обработанных операторов
-                const delayPerOperator = 57; // Задержка в миллисекундах на одного оператора
+                const delayPerOperator = 70; // Задержка в миллисекундах на одного оператора
                 const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
 
                 console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
