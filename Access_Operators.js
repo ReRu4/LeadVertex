@@ -718,7 +718,7 @@
 
                 // Рассчитываем задержку на основе обработанных операторов
                 const delayPerOperator = 70; // Задержка в миллисекундах на одного оператора
-                const totalDelay = Math.max(pageOperators * delayPerOperator, 2000); // Минимальная задержка - 2 секунды
+                const totalDelay = Math.max(pageOperators * delayPerOperator, 5000); // Минимальная задержка - 5 секунд
 
                 console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
                 await new Promise(resolve => setTimeout(resolve, totalDelay));
