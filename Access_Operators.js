@@ -1,22 +1,64 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      1.4.7
-// @description  Автоматический выбор названий и настройка доступа с добавлением полей
+// @version      2.0.0
+// @description  Проставление доступа по операторам в режиме прозвона 
 // @author       ReRu (@Ruslan_Intertrade)
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=2
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=5
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=6
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=7
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=8
-// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=9
+// @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
 // @match        *://leadvertex.ru/admin/callmodeNew/rules.html*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
 // @downloadURL  https://raw.githubusercontent.com/ReRu4/LeadVertex/main/Access_Operators.js
 // ==/UserScript==
 (function () {
     'use strict';
+
+    function decrypt(encrypted, secret) {
+        if (!encrypted || !secret) return null;
+        let decrypted = '';
+        for (let i = 0; i < encrypted.length; i++) {
+            decrypted += String.fromCharCode(encrypted.charCodeAt(i) ^ secret.charCodeAt(i % secret.length));
+        }
+        return decrypted;
+    }
+
+    GM_registerMenuCommand('🔑 Установить параметры', () => {
+        const encryptedKey = prompt('Шаг 1/2: Введите ваш токен доступа:');
+        if (!encryptedKey) {
+            return;
+        }
+
+        const secret = prompt('Шаг 2/2: Введите ключ для расшифровки (секретную фразу):');
+        if (!secret) {
+            alert('Установка отменена, так как не был введен ключ для расшифровки.');
+            return;
+        }
+
+        GM_setValue(swap, { encryptedKey, secret });
+        location.reload();
+    });
+
+    GM_registerMenuCommand('⚠️ Удалить параметры', () => {
+        if (confirm('Вы уверены, что хотите удалить параметры доступа?')) {
+            GM_setValue(swap, null);
+            location.reload();
+        }
+    });
+
+    // логирование с временной меткой
+    const debug = (message, data) => {
+        const timestamp = new Date().toLocaleTimeString();
+        if (data) {
+            console.log(`[DEBUG ${timestamp}]`, message, data);
+        } else {
+            console.log(`[DEBUG ${timestamp}]`, message);
+        }
+    };
+
+    debug('Инициализация скрипта');
 
     const columnMap15 = {
         1: { group: "1", type: "0" },
@@ -36,6 +78,8 @@
         15: { group: "5", type: "2" },
     };
 
+    
+
     const columnMap9 = {
         1: { group: "1", type: "0" },
         2: { group: "1", type: "1" },
@@ -47,10 +91,9 @@
         8: { group: "5", type: "1" },
         9: { group: "5", type: "2" },
     };
-
-    console.log("Скрипт загружен с улучшенным интерфейсом.");
-
-    // Добавляем стили в head
+    
+    
+    // стили в head
     const addGlobalStyle = (css) => {
         const head = document.getElementsByTagName('head')[0];
         if (!head) return;
@@ -60,7 +103,7 @@
         head.appendChild(style);
     };
 
-    // Добавляем глобальные стили
+    //  глобальные стили
     addGlobalStyle(`
         :root {
             --primary-color: #4a6da7;
@@ -248,12 +291,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .list-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            padding: 0 5px;
-        }
         .list-actions {
             display: flex;
             gap: 5px;
@@ -273,11 +310,6 @@
             display: flex;
             gap: 10px;
             margin-top: 10px;
-        }
-        .flex-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
         }
         .divider {
             height: 1px;
@@ -302,10 +334,37 @@
             -webkit-appearance: menulist;
             -moz-appearance: menulist;
         }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .progress-container {
+            margin-top: 15px;
+            display: none;
+        }
+        .progress-bar {
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .progress-text {
+            margin-top: 5px;
+            text-align: center;
+            font-size: 12px;
+        }
     `);
 
+    const swap = "accessConfig"; 
+
     if (location.href.includes("settings.html")) {
-        // Создаем панель настроек доступа
+        debug('Обнаружена страница настроек, инициализация интерфейса');
+        // панель настроек доступа
         const panel = document.createElement('div');
         panel.className = 'access-panel';
         panel.innerHTML = `
@@ -352,6 +411,7 @@
                         <div class="control-group">
                             <label class="control-label">Колонки (через пробел):</label>
                             <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
+                            <span class="hint-text">Введите "all" для выбора всех колонок</span>
                         </div>
                         <div class="control-group">
                             <label class="control-label">Операторы:</label>
@@ -361,13 +421,20 @@
                         <div class="control-group">
                             <label class="control-label">Действие:</label>
                             <select class="actionSelect access-select">
-                                <option value="включить">Включить доступ</option>
-                                <option value="отключить">Отключить доступ</option>
+                                <option value="1">Включить доступ</option>
+                                <option value="0">Отключить доступ</option>
                             </select>
                         </div>
                     </div>
                 </div>
                 <button id="addFieldButton" class="access-button secondary-button">+ Добавить поле настроек</button>
+            </div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">Обработано: 0 / 0</div>
             </div>
 
             <div class="divider"></div>
@@ -378,7 +445,15 @@
         `;
         document.body.appendChild(panel);
 
-        // Получаем все строки таблицы с проектами
+        const confirmButton = document.getElementById('confirmButton');
+
+        const settings = GM_getValue(swap);
+        if (!settings || !settings.encryptedKey || !settings.secret) {
+            confirmButton.disabled = true;
+            confirmButton.textContent = 'Параметры не заданы';
+        }
+
+        // проекты
         const rows = document.querySelectorAll("tr");
         const namesMap = new Map();
         const namesList = document.getElementById('namesList');
@@ -386,7 +461,10 @@
         const selectAllButton = document.getElementById('selectAllButton');
         const unselectAllButton = document.getElementById('unselectAllButton');
 
-        // Заполняем список проектов
+        debug('Получено строк таблицы:', rows.length);
+
+        // список проектов
+        let projectCount = 0;
         rows.forEach(row => {
             const nameElement = row.querySelector('td:nth-child(2) a');
             const configLinkElement = row.querySelector('td:nth-child(1) a');
@@ -395,9 +473,15 @@
             const hasNonZeroValue = values.some(value => value > 0);
 
             if (nameElement && configLinkElement) {
+                projectCount++;
                 const name = nameElement.textContent.trim();
                 const configLink = configLinkElement.href;
-                namesMap.set(name, configLink);
+                
+                const projectName = name.toLowerCase().replace(/\s+/g, '-');
+                const subdomain = projectName;
+                
+                debug(`Проект ${projectCount}: ${name}, поддомен: ${subdomain}, ссылка: ${configLink}`);
+                namesMap.set(name, { configLink, subdomain });
 
                 const container = document.createElement('div');
                 container.className = 'project-item';
@@ -405,7 +489,9 @@
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'access-checkbox';
-                checkbox.value = configLink;
+                checkbox.value = subdomain; 
+                checkbox.dataset.configLink = configLink;
+                checkbox.dataset.projectName = name; 
                 checkbox.id = `checkbox-${name.replace(/\s+/g, '-')}`;
                 checkbox.checked = hasNonZeroValue;
 
@@ -413,13 +499,15 @@
                 label.className = 'project-name';
                 label.htmlFor = `checkbox-${name.replace(/\s+/g, '-')}`;
                 label.textContent = name;
-                label.title = name; // Добавляем подсказку при наведении
+                label.title = name;
 
                 container.appendChild(checkbox);
                 container.appendChild(label);
                 namesList.appendChild(container);
             }
         });
+
+        debug(`Всего добавлено проектов: ${projectCount}`);
 
         // Обработчики событий для списка проектов
         toggleButton.addEventListener('click', () => {
@@ -452,6 +540,7 @@
                 <div class="control-group">
                     <label class="control-label">Колонки (через пробел):</label>
                     <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
+                    <span class="hint-text">Введите "all" для выбора всех колонок</span>
                 </div>
                 <div class="control-group">
                     <label class="control-label">Операторы:</label>
@@ -461,8 +550,8 @@
                 <div class="control-group">
                     <label class="control-label">Действие:</label>
                     <select class="actionSelect access-select">
-                        <option value="включить">Включить доступ</option>
-                        <option value="отключить">Отключить доступ</option>
+                        <option value="1">Включить доступ</option>
+                        <option value="0">Отключить доступ</option>
                     </select>
                 </div>
             `;
@@ -492,7 +581,6 @@
         templateSelect.addEventListener('change', (event) => {
             const selectedTemplate = event.target.value;
 
-            // Очищаем текущие блоки настроек
             const fieldsContainer = document.getElementById('fieldsContainer');
             fieldsContainer.innerHTML = '';
             fieldCounter = 0;
@@ -522,6 +610,7 @@
                         <div class="control-group">
                             <label class="control-label">Колонки (через пробел):</label>
                             <input type="text" class="columnsInput access-input" value="${template}">
+                            <span class="hint-text">Введите "all" для выбора всех колонок</span>
                         </div>
                         <div class="control-group">
                             <label class="control-label">Операторы:</label>
@@ -531,14 +620,14 @@
                         <div class="control-group">
                             <label class="control-label">Действие:</label>
                             <select class="actionSelect access-select">
-                                <option value="включить">Включить доступ</option>
-                                <option value="отключить">Отключить доступ</option>
+                                <option value="1">Включить доступ</option>
+                                <option value="0">Отключить доступ</option>
                             </select>
                         </div>
                     `;
                     fieldsContainer.appendChild(fieldBlock);
 
-                    // Добавляем обработчик удаления только для дополнительных блоков
+                    //  обработчик удаления только для дополнительных блоков
                     if (index > 0) {
                         fieldBlock.querySelector('.remove-field').addEventListener('click', () => {
                             fieldBlock.remove();
@@ -567,6 +656,7 @@
                     <div class="control-group">
                         <label class="control-label">Колонки (через пробел):</label>
                         <input type="text" class="columnsInput access-input" value="${columns}">
+                        <span class="hint-text">Введите "all" для выбора всех колонок</span>
                     </div>
                     <div class="control-group">
                         <label class="control-label">Операторы:</label>
@@ -576,8 +666,8 @@
                     <div class="control-group">
                         <label class="control-label">Действие:</label>
                         <select class="actionSelect access-select">
-                            <option value="включить">Включить доступ</option>
-                            <option value="отключить">Отключить доступ</option>
+                            <option value="1">Включить доступ</option>
+                            <option value="0">Отключить доступ</option>
                         </select>
                     </div>
                 `;
@@ -587,7 +677,6 @@
                 const checkboxes = document.querySelectorAll('#namesList input[type="checkbox"]');
                 checkboxes.forEach(checkbox => checkbox.checked = false);
 
-                // Выбираем только проекты для стажёров
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
                     if (targetProjects.some(target => projectName.includes(target))) {
@@ -602,140 +691,215 @@
             panel.remove();
         });
 
-        // Обработчик подтверждения настроек
-        document.getElementById('confirmButton').addEventListener('click', () => {
-            const selectedLinks = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked')).map(cb => cb.value);
-            const use15Columns = document.getElementById('columnRangeToggle').checked;
+        async function getActiveOperators(subdomain, water) {
+            return new Promise((resolve, reject) => {
+                const url = `https://${subdomain}.leadvertex.ru/api/admin/getActiveOperators.html?token=${water}`;
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            try {
+                                const data = JSON.parse(response.responseText);
+                                resolve(data);
+                            } catch (e) {
+                                reject(new Error(`Ошибка парсинга ответа сервера: ${e.message}`));
+                            }
+                        } else {
+                            reject(new Error(`HTTP ошибка ${response.status}: ${response.statusText}`));
+                        }
+                    },
+                    onerror: (err) => {
+                        reject(new Error(`Ошибка сетевого запроса: ${err.error || 'неизвестная ошибка'}`));
+                    }
+                });
+            });
+        }
 
-            if (!selectedLinks.length) {
-                alert("Выберите хотя бы одну таблицу.");
+        async function setOperatorRule(subdomain, trash, operatorID, group, type, set) {
+            return new Promise((resolve, reject) => {
+                const url = `https://${subdomain}.leadvertex.ru/api/callmode/v2/setOperatorRule.html?token=${trash}`;
+                const params = new URLSearchParams();
+                params.append('operatorID', operatorID);
+                params.append('group', group);
+                params.append('type', type);
+                params.append('set', set);
+                
+                const requestData = params.toString();
+                
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: url,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: requestData,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            try {
+                                const result = JSON.parse(response.responseText);
+                                if (result.result === 'OK') {
+                                    resolve(true);
+                                } else {
+                                    reject(new Error(`Неожиданный ответ сервера: ${JSON.stringify(result)}`));
+                                }
+                            } catch (e) {
+                                reject(new Error(`Ошибка парсинга ответа сервера: ${e.message}`));
+                            }
+                        } else {
+                            reject(new Error(`HTTP ошибка ${response.status}: ${response.statusText}`));
+                        }
+                    },
+                    onerror: (err) => {
+                        reject(new Error(`Ошибка сетевого запроса: ${err.error || 'неизвестная ошибка'}`));
+                    }
+                });
+            });
+        }
+
+        // Функция для обновления прогресса
+        function updateProgress(current, total) {
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const percent = Math.round((current / total) * 100);
+            
+            progressFill.style.width = `${percent}%`;
+            progressText.textContent = `Обработано: ${current} / ${total}`;
+        }
+
+        // Обработчик подтверждения настроек
+        document.getElementById('confirmButton').addEventListener('click', async () => {
+            const settings = GM_getValue(swap);
+            
+            if (!settings || !settings.encryptedKey || !settings.secret) {
+                alert("Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.");
                 return;
             }
 
-            sessionStorage.setItem('use15Columns', use15Columns);
+            let top;
+            try {
+                top = decrypt(settings.encryptedKey, settings.secret);
+                 if (!top) throw new Error("Результат расшифровки - пустая строка.");
+            } catch (e) {
+                alert(`Ошибка при расшифровке токена: ${e.message}. Убедитесь, что вы ввели правильные зашифрованные данные и ключ расшифровки.`);
+                return;
+            }
+            
+            const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
+                .map(cb => ({
+                    subdomain: cb.value,
+                    name: cb.dataset.projectName || cb.value
+                }));
+            
+            debug('Выбранные проекты:', selectedProjects);
+            
+            const use15Columns = document.getElementById('columnRangeToggle').checked;
+            const columnMap = use15Columns ? columnMap15 : columnMap9;
+            const allColumns = Object.keys(columnMap).map(Number);
+
+            if (!selectedProjects.length) {
+                alert("Выберите хотя бы один проект.");
+                return;
+            }
 
             const fieldBlocks = document.querySelectorAll('.field-block');
             const blocksData = Array.from(fieldBlocks).map(block => {
-                const columnsInput = block.querySelector('.columnsInput').value.trim();
-                const usersInput = block.querySelector('.usersInput').value.trim();
-                const action = block.querySelector('.actionSelect').value;
+                const columnsInput = block.querySelector('.columnsInput').value.trim().toLowerCase();
+                let columns;
 
+                if (columnsInput === 'all') {
+                    columns = allColumns;
+                } else {
+                    columns = columnsInput.split(' ').map(Number).filter(Boolean);
+                }
+                
                 return {
-                    columns: columnsInput.split(' ').map(Number).filter(Boolean),
-                    users: usersInput.split('\n').map(user => user.trim().toLowerCase()).filter(Boolean),
-                    action: action
+                    columns: columns,
+                    users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim()).filter(Boolean),
+                    action: block.querySelector('.actionSelect').value
                 };
             });
 
-            // Проверка заполнения полей
             if (blocksData.some(data => !data.columns.length || !data.users.length)) {
                 alert("Заполните все поля колонок и операторов.");
                 return;
             }
 
-            sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks));
-            sessionStorage.setItem('blocksData', JSON.stringify(blocksData));
-
-            alert("Начинается обработка...");
-            window.location.href = selectedLinks[0];
-        });
-    }
-
-    if (location.href.includes("rules.html")) {
-        const selectedLinks = JSON.parse(sessionStorage.getItem('selectedLinks') || "[]");
-        const blocksData = JSON.parse(sessionStorage.getItem('blocksData') || "[]");
-        const use15Columns = JSON.parse(sessionStorage.getItem('use15Columns'));
-        const columnMap = use15Columns ? columnMap15 : columnMap9;
-
-        let isProcessing = false;
-
-        if (!selectedLinks.length || !blocksData.length) {
-            console.log("Нет данных для обработки.");
-            return;
-        }
-
-        async function processCurrentPage(targetUsers, columns, enable) {
-            let processedOperators = 0;
-
-            return new Promise(resolve => {
-                const rows = document.querySelectorAll("tr");
-
-                // Проверяем, есть ли ключевое слово "all" среди целевых пользователей
-                const applyToAll = targetUsers.includes("all");
-
-                rows.forEach(row => {
-                    const usernameElement = row.querySelector("td:first-child");
-                    const username = usernameElement?.textContent?.trim().toLowerCase();
-
-                    // Обрабатываем строку, если это оператор и либо он в списке целевых, либо применяем ко всем
-                    if (username && (applyToAll || targetUsers.includes(username))) {
-                        processedOperators++;
-                        columns.forEach(column => {
-                            const { group, type } = columnMap[column];
-                            const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
-                            if (checkbox) {
-                                if (enable && !checkbox.checked) {
-                                    checkbox.click();
-                                } else if (!enable && checkbox.checked) {
-                                    checkbox.click();
+            const confirmButton = document.getElementById('confirmButton');
+            document.getElementById('progressContainer').style.display = 'block';
+            confirmButton.disabled = true;
+            confirmButton.textContent = 'Обработка...';
+            
+            let totalOperations = 0;
+            let completedOperations = 0;
+            
+            try {
+                const operatorsByDomain = {};
+                
+                for (const project of selectedProjects) {
+                    try {
+                        const { subdomain, name } = project;
+                        const operators = await getActiveOperators(subdomain, top);
+                        operatorsByDomain[subdomain] = operators;
+                        
+                        for (const blockData of blocksData) {
+                            if (blockData.users.includes("all")) {
+                                totalOperations += blockData.columns.length * Object.keys(operators).length;
+                            } else {
+                                const operatorLogins = Object.values(operators).map(login => login.toLowerCase());
+                                const matchCount = blockData.users.filter(user => operatorLogins.includes(user.toLowerCase())).length;
+                                totalOperations += blockData.columns.length * matchCount;
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Ошибка получения операторов для ${project.subdomain}:`, error);
+                    }
+                }
+                
+                updateProgress(0, totalOperations);
+                
+                for (const project of selectedProjects) {
+                    const { subdomain, name } = project;
+                    const operators = operatorsByDomain[subdomain];
+                    if (!operators) {
+                        continue;
+                    }
+                    
+                    for (const blockData of blocksData) {
+                        const { columns, users, action } = blockData;
+                        
+                        let operatorIds = [];
+                        if (users.includes("all")) {
+                            operatorIds = Object.keys(operators);
+                        } else {
+                            for (const [id, login] of Object.entries(operators)) {
+                                if (users.some(user => user.toLowerCase() === login.toLowerCase())) {
+                                    operatorIds.push(id);
                                 }
                             }
-                        });
+                        }
+                        
+                        for (const operatorId of operatorIds) {
+                            const operatorLogin = operators[operatorId];
+                            for (const column of columns) {
+                                try {
+                                    const { group, type } = columnMap[column];
+                                    await setOperatorRule(subdomain, top, operatorId, group, type, action);
+                                } catch (error) {
+                                    console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
+                                } finally {
+                                    completedOperations++;
+                                    updateProgress(completedOperations, totalOperations);
+                                }
+                            }
+                        }
                     }
-                });
-
-                setTimeout(() => resolve(processedOperators), 700);
-            });
-        }
-
-        async function processPages() {
-            if (isProcessing) {
-                console.log("Обработка уже выполняется. Повторный запуск заблокирован.");
-                return;
-            }
-
-            isProcessing = true;
-
-            let totalOperatorsToProcess = 0;
-
-            for (let i = 0; i < selectedLinks.length; i++) {
-                const link = selectedLinks[i];
-                console.log(`Обрабатываем проект: ${link}`);
-
-                let pageOperators = 0;
-
-                for (const { columns, users, action } of blocksData) {
-                    const enable = action === "включить";
-                    console.log(`Обрабатываем колонки: ${columns} для пользователей: ${users} с действием: ${action}`);
-                    const processed = await processCurrentPage(users, columns, enable);
-                    pageOperators += processed;
                 }
-
-                totalOperatorsToProcess += pageOperators;
-
-                console.log(`Обработано операторов на странице: ${pageOperators}`);
-                console.log(`Общее количество операторов для обработки: ${totalOperatorsToProcess}`);
-
-                // Рассчитываем задержку на основе обработанных операторов
-                const delayPerOperator = 70; // Задержка в миллисекундах на одного оператора
-                const totalDelay = Math.max(pageOperators * delayPerOperator, 5000); // Минимальная задержка - 5 секунд
-
-                console.log(`Задержка перед переходом к следующей странице: ${totalDelay} мс`);
-                await new Promise(resolve => setTimeout(resolve, totalDelay));
-
-                if (i < selectedLinks.length - 1) {
-                    console.log(`Переход к следующему проекту: ${selectedLinks[i + 1]}`);
-                    sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks.slice(i + 1)));
-                    window.location.href = selectedLinks[i + 1];
-                    return;
-                }
+                
+            } catch (error) {
+                console.error('Критическая ошибка в процессе обработки:', error);
+            } finally {
+                confirmButton.disabled = false;
+                confirmButton.textContent = 'Применить';
             }
-
-            alert("Обработка завершена.");
-            sessionStorage.clear();
-            isProcessing = false;
-        }
-
-        processPages();
+        });
     }
 })();
