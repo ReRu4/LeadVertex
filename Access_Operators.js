@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
-// @description  Проставление доступа по операторам в режиме прозвона 
+// @version      2.1.0
+// @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
 // @match        *://leadvertex.ru/admin/callmodeNew/rules.html*
@@ -15,6 +15,9 @@
 // ==/UserScript==
 (function () {
     'use strict';
+
+    const CONCURRENT_LIMIT = 10; // Количество одновременных запросов
+    const swap = "accessConfig";
 
     function decrypt(encrypted, secret) {
         if (!encrypted || !secret) return null;
@@ -78,7 +81,7 @@
         15: { group: "5", type: "2" },
     };
 
-    
+
 
     const columnMap9 = {
         1: { group: "1", type: "0" },
@@ -91,8 +94,8 @@
         8: { group: "5", type: "1" },
         9: { group: "5", type: "2" },
     };
-    
-    
+
+
     // стили в head
     const addGlobalStyle = (css) => {
         const head = document.getElementsByTagName('head')[0];
@@ -360,8 +363,6 @@
         }
     `);
 
-    const swap = "accessConfig"; 
-
     if (location.href.includes("settings.html")) {
         debug('Обнаружена страница настроек, инициализация интерфейса');
         // панель настроек доступа
@@ -371,6 +372,15 @@
             <div class="panel-header">
                 <h3 class="panel-title">Настройка доступа</h3>
                 <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+            </div>
+
+            <div class="control-group">
+                <div class="checkbox-container" style="justify-content: space-between;">
+                    <label for="legacyModeToggle" style="white-space: nowrap; cursor: pointer;">
+                        <input type="checkbox" id="legacyModeToggle" class="access-checkbox">
+                        Старый режим
+                    </label>
+                </div>
             </div>
 
             <div class="control-group">
@@ -476,10 +486,10 @@
                 projectCount++;
                 const name = nameElement.textContent.trim();
                 const configLink = configLinkElement.href;
-                
+
                 const projectName = name.toLowerCase().replace(/\s+/g, '-');
                 const subdomain = projectName;
-                
+
                 debug(`Проект ${projectCount}: ${name}, поддомен: ${subdomain}, ссылка: ${configLink}`);
                 namesMap.set(name, { configLink, subdomain });
 
@@ -489,9 +499,9 @@
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'access-checkbox';
-                checkbox.value = subdomain; 
+                checkbox.value = subdomain;
                 checkbox.dataset.configLink = configLink;
-                checkbox.dataset.projectName = name; 
+                checkbox.dataset.projectName = name;
                 checkbox.id = `checkbox-${name.replace(/\s+/g, '-')}`;
                 checkbox.checked = hasNonZeroValue;
 
@@ -724,9 +734,9 @@
                 params.append('group', group);
                 params.append('type', type);
                 params.append('set', set);
-                
+
                 const requestData = params.toString();
-                
+
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: url,
@@ -760,112 +770,133 @@
             const progressFill = document.getElementById('progressFill');
             const progressText = document.getElementById('progressText');
             const percent = Math.round((current / total) * 100);
-            
+
             progressFill.style.width = `${percent}%`;
             progressText.textContent = `Обработано: ${current} / ${total}`;
         }
 
         // Обработчик подтверждения настроек
         document.getElementById('confirmButton').addEventListener('click', async () => {
-            const settings = GM_getValue(swap);
-            
-            if (!settings || !settings.encryptedKey || !settings.secret) {
-                alert("Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.");
-                return;
-            }
+            const useLegacyMode = document.getElementById('legacyModeToggle').checked;
 
-            let top;
-            try {
-                top = decrypt(settings.encryptedKey, settings.secret);
-                 if (!top) throw new Error("Результат расшифровки - пустая строка.");
-            } catch (e) {
-                alert(`Ошибка при расшифровке токена: ${e.message}. Убедитесь, что вы ввели правильные зашифрованные данные и ключ расшифровки.`);
-                return;
-            }
-            
-            const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
-                .map(cb => ({
-                    subdomain: cb.value,
-                    name: cb.dataset.projectName || cb.value
-                }));
-            
-            debug('Выбранные проекты:', selectedProjects);
-            
-            const use15Columns = document.getElementById('columnRangeToggle').checked;
-            const columnMap = use15Columns ? columnMap15 : columnMap9;
-            const allColumns = Object.keys(columnMap).map(Number);
+            if (useLegacyMode) {
+                // --- ЛОГИКА СТАРОЙ ВЕРСИИ (UI) ---
+                const selectedLinks = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked')).map(cb => cb.dataset.configLink);
+                const use15Columns = document.getElementById('columnRangeToggle').checked;
 
-            if (!selectedProjects.length) {
-                alert("Выберите хотя бы один проект.");
-                return;
-            }
-
-            const fieldBlocks = document.querySelectorAll('.field-block');
-            const blocksData = Array.from(fieldBlocks).map(block => {
-                const columnsInput = block.querySelector('.columnsInput').value.trim().toLowerCase();
-                let columns;
-
-                if (columnsInput === 'all') {
-                    columns = allColumns;
-                } else {
-                    columns = columnsInput.split(' ').map(Number).filter(Boolean);
+                if (!selectedLinks.length) {
+                    alert("Выберите хотя бы одну таблицу.");
+                    return;
                 }
-                
-                return {
-                    columns: columns,
-                    users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim()).filter(Boolean),
-                    action: block.querySelector('.actionSelect').value
-                };
-            });
 
-            if (blocksData.some(data => !data.columns.length || !data.users.length)) {
-                alert("Заполните все поля колонок и операторов.");
-                return;
-            }
+                sessionStorage.setItem('use15Columns', use15Columns);
 
-            const confirmButton = document.getElementById('confirmButton');
-            document.getElementById('progressContainer').style.display = 'block';
-            confirmButton.disabled = true;
-            confirmButton.textContent = 'Обработка...';
-            
-            let totalOperations = 0;
-            let completedOperations = 0;
-            
-            try {
+                const fieldBlocks = document.querySelectorAll('.field-block');
+                const blocksData = Array.from(fieldBlocks).map(block => {
+                     const actionValue = block.querySelector('.actionSelect').value;
+                     return {
+                        columns: block.querySelector('.columnsInput').value.trim().split(' ').map(Number).filter(Boolean),
+                        users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim().toLowerCase()).filter(Boolean),
+                        action: actionValue === "1" ? "включить" : "отключить" // Конвертация для старого режима
+                    };
+                });
+
+                if (blocksData.some(data => !data.columns.length || !data.users.length)) {
+                    alert("Заполните все поля колонок и операторов.");
+                    return;
+                }
+
+                sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks));
+                sessionStorage.setItem('blocksData', JSON.stringify(blocksData));
+
+                alert("Начинается обработка в медленном режиме...");
+                window.location.href = selectedLinks[0];
+
+            } else {
+                // --- ЛОГИКА НОВОЙ ВЕРСИИ (API) ---
+                const settings = GM_getValue(swap);
+
+                if (!settings || !settings.encryptedKey || !settings.secret) {
+                    alert("Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.");
+                    return;
+                }
+
+                let top;
+                try {
+                    top = decrypt(settings.encryptedKey, settings.secret);
+                    if (!top) throw new Error("Результат расшифровки - пустая строка.");
+                } catch (e) {
+                    alert(`Ошибка при расшифровке токена: ${e.message}. Убедитесь, что вы ввели правильные зашифрованные данные и ключ расшифровки.`);
+                    return;
+                }
+
+                const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
+                    .map(cb => ({
+                        subdomain: cb.value,
+                        name: cb.dataset.projectName || cb.value
+                    }));
+
+                const use15Columns = document.getElementById('columnRangeToggle').checked;
+                const columnMap = use15Columns ? columnMap15 : columnMap9;
+                const allColumns = Object.keys(columnMap).map(Number);
+
+                if (!selectedProjects.length) {
+                    alert("Выберите хотя бы один проект.");
+                    return;
+                }
+
+                const fieldBlocks = document.querySelectorAll('.field-block');
+                const blocksData = Array.from(fieldBlocks).map(block => {
+                    const columnsInput = block.querySelector('.columnsInput').value.trim().toLowerCase();
+                    let columns;
+
+                    if (columnsInput === 'all') {
+                        columns = allColumns;
+                    } else {
+                        columns = columnsInput.split(' ').map(Number).filter(Boolean);
+                    }
+
+                    return {
+                        columns: columns,
+                        users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim()).filter(Boolean),
+                        action: block.querySelector('.actionSelect').value
+                    };
+                });
+
+                if (blocksData.some(data => !data.columns.length || !data.users.length)) {
+                    alert("Заполните все поля колонок и операторов.");
+                    return;
+                }
+
+                const confirmButton = document.getElementById('confirmButton');
+                document.getElementById('progressContainer').style.display = 'block';
+                confirmButton.disabled = true;
+                confirmButton.textContent = 'Обработка...';
+
+                // 1. Собираем все задачи в один массив
+                const tasks = [];
                 const operatorsByDomain = {};
-                
+
+                // Сначала получаем всех операторов для всех проектов
                 for (const project of selectedProjects) {
                     try {
-                        const { subdomain, name } = project;
-                        const operators = await getActiveOperators(subdomain, top);
-                        operatorsByDomain[subdomain] = operators;
-                        
-                        for (const blockData of blocksData) {
-                            if (blockData.users.includes("all")) {
-                                totalOperations += blockData.columns.length * Object.keys(operators).length;
-                            } else {
-                                const operatorLogins = Object.values(operators).map(login => login.toLowerCase());
-                                const matchCount = blockData.users.filter(user => operatorLogins.includes(user.toLowerCase())).length;
-                                totalOperations += blockData.columns.length * matchCount;
-                            }
-                        }
+                        const { subdomain } = project;
+                        operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
                     } catch (error) {
                         console.error(`Ошибка получения операторов для ${project.subdomain}:`, error);
+                        operatorsByDomain[subdomain] = null; // Помечаем, что проект недоступен
                     }
                 }
-                
-                updateProgress(0, totalOperations);
-                
+
+                // Теперь формируем задачи на основе полученных операторов
                 for (const project of selectedProjects) {
                     const { subdomain, name } = project;
                     const operators = operatorsByDomain[subdomain];
-                    if (!operators) {
-                        continue;
-                    }
-                    
+                    if (!operators) continue; // Пропускаем проекты, где не удалось получить операторов
+
                     for (const blockData of blocksData) {
                         const { columns, users, action } = blockData;
-                        
+
                         let operatorIds = [];
                         if (users.includes("all")) {
                             operatorIds = Object.keys(operators);
@@ -876,30 +907,118 @@
                                 }
                             }
                         }
-                        
+
                         for (const operatorId of operatorIds) {
                             const operatorLogin = operators[operatorId];
                             for (const column of columns) {
-                                try {
-                                    const { group, type } = columnMap[column];
-                                    await setOperatorRule(subdomain, top, operatorId, group, type, action);
-                                } catch (error) {
+                                const { group, type } = columnMap[column];
+                                // Добавляем функцию, которая будет вызвана позже
+                                tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
                                     console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
-                                } finally {
-                                    completedOperations++;
-                                    updateProgress(completedOperations, totalOperations);
-                                }
+                                }));
                             }
                         }
                     }
                 }
-                
-            } catch (error) {
-                console.error('Критическая ошибка в процессе обработки:', error);
-            } finally {
+
+                const totalOperations = tasks.length;
+                let completedOperations = 0;
+                updateProgress(0, totalOperations);
+
+                // 2. Создаем и запускаем воркеры
+                const runWorker = async () => {
+                    while (tasks.length > 0) {
+                        const task = tasks.pop(); // Берем следующую задачу
+                        if (task) {
+                            await task();
+                            completedOperations++;
+                            updateProgress(completedOperations, totalOperations);
+                        }
+                    }
+                };
+
+                // 3. Запускаем пул воркеров и ждем их завершения
+                const workers = [];
+                for (let i = 0; i < CONCURRENT_LIMIT; i++) {
+                    workers.push(runWorker());
+                }
+
+                await Promise.all(workers);
+
+                // Все задачи выполнены
                 confirmButton.disabled = false;
                 confirmButton.textContent = 'Применить';
             }
         });
+    }
+
+     if (location.href.includes("rules.html")) {
+        const selectedLinks = JSON.parse(sessionStorage.getItem('selectedLinks') || "[]");
+        const blocksData = JSON.parse(sessionStorage.getItem('blocksData') || "[]");
+        const use15Columns = JSON.parse(sessionStorage.getItem('use15Columns'));
+        const columnMap = use15Columns ? columnMap15 : columnMap9;
+
+        let isProcessing = false;
+
+        if (!selectedLinks.length || !blocksData.length) {
+            return;
+        }
+
+        async function processCurrentPage(targetUsers, columns, enable) {
+            let processedOperators = 0;
+            return new Promise(resolve => {
+                const rows = document.querySelectorAll("tr");
+                const applyToAll = targetUsers.includes("all");
+
+                rows.forEach(row => {
+                    const usernameElement = row.querySelector("td:first-child");
+                    const username = usernameElement?.textContent?.trim().toLowerCase();
+
+                    if (username && (applyToAll || targetUsers.includes(username))) {
+                        processedOperators++;
+                        columns.forEach(column => {
+                            const mapping = columnMap[column];
+                            if (mapping) {
+                                const { group, type } = mapping;
+                                const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
+                                if (checkbox) {
+                                    if ((enable && !checkbox.checked) || (!enable && checkbox.checked)) {
+                                        checkbox.click();
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                setTimeout(() => resolve(processedOperators), 700); // Задержка для применения кликов
+            });
+        }
+
+        async function processPages() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            let totalPageOperators = 0;
+            for (const { columns, users, action } of blocksData) {
+                const processedCount = await processCurrentPage(users, columns, action === "включить");
+                totalPageOperators += processedCount;
+            }
+
+            const delayPerOperator = 70;
+            const totalDelay = Math.max(totalPageOperators * delayPerOperator, 3000); // Минимальная задержка 3 сек
+
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+
+            const remainingLinks = selectedLinks.slice(1);
+            sessionStorage.setItem('selectedLinks', JSON.stringify(remainingLinks));
+
+            if (remainingLinks.length > 0) {
+                window.location.href = remainingLinks[0];
+            } else {
+                alert("Обработка завершена.");
+                sessionStorage.clear();
+            }
+        }
+        processPages();
     }
 })();
