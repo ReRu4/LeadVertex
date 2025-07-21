@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа по АНГОЛЕ И АЛЖИРУ
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.2.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -137,6 +137,103 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            transition: right 0.4s ease-in-out;
+        }
+        .access-panel.shifted {
+            right: 320px;
+        }
+
+        .operator-search-panel {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            right: 20px;
+            width: 300px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+            z-index: 9998;
+            max-height: 85vh;
+            overflow-y: auto;
+            font-family: Arial, sans-serif;
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: right 0.4s ease-in-out, opacity 0.4s ease-in-out;
+            opacity: 0;
+            pointer-events: none;
+            border: 1px solid var(--border-color);
+        }
+
+        .operator-search-panel.visible {
+            right: 320px;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .search-results-container {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            max-height: 45vh;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+        }
+
+        .operator-group {
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        .operator-group:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .operator-group-header {
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        .operator-group-header:hover {
+            background-color: var(--hover-color);
+        }
+
+        .operator-group-content {
+            padding-left: 20px;
+            margin-top: 5px;
+            display: none; /* Initially hidden */
+        }
+        .operator-group-content.visible {
+            display: block;
+        }
+
+        .operator-group-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 2px 0;
+        }
+
+        .users-input-wrapper {
+            display: flex;
+            align-items: stretch;
+            gap: 5px;
+        }
+        .users-input-wrapper .access-textarea {
+            flex-grow: 1;
+            margin: 0;
+        }
+        .find-operators-btn {
+            flex-shrink: 0;
         }
         .panel-header {
             display: flex;
@@ -371,7 +468,10 @@
         panel.innerHTML = `
             <div class="panel-header">
                 <h3 class="panel-title">Настройка доступа</h3>
-                <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+                <div>
+                    <button id="showSearchPanelBtn" class="access-button secondary-button" title="Найти операторов" style="padding: 5px 8px; font-size: 12px; margin-right: 5px;">🔍</button>
+                    <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+                </div>
             </div>
 
             <div class="control-group">
@@ -455,6 +555,25 @@
         `;
         document.body.appendChild(panel);
 
+        const searchPanel = document.createElement('div');
+        searchPanel.id = 'operatorSearchPanel';
+        searchPanel.className = 'operator-search-panel';
+        searchPanel.innerHTML = `
+            <div class="panel-header">
+                <h3 class="panel-title">Поиск операторов</h3>
+            </div>
+            <div class="control-group">
+                <label class="control-label">Колонки для фильтра:</label>
+                <input type="text" id="searchColumnsInput" class="access-input" placeholder="Например: 1 2 3">
+                <span class="hint-text">Оставьте пустым для группировки</span>
+            </div>
+            <button id="runOperatorSearchBtn" class="access-button success-button">Найти</button>
+            <div id="searchResultsContainer" class="search-results-container" style="display: none;"></div>
+            <div id="applySearchContainer" class="button-container" style="flex-direction: column; gap: 5px; display: none;"></div>
+        `;
+        document.body.appendChild(searchPanel);
+
+
         const confirmButton = document.getElementById('confirmButton');
 
         const settings = GM_getValue(swap);
@@ -462,6 +581,13 @@
             confirmButton.disabled = true;
             confirmButton.textContent = 'Параметры не заданы';
         }
+
+        // Обработчик закрытия панели
+        document.getElementById('closeButton').addEventListener('click', () => {
+            panel.remove();
+            searchPanel.remove();
+            if (observer) observer.disconnect();
+        });
 
         // проекты
         const rows = document.querySelectorAll("tr");
@@ -699,6 +825,280 @@
         // Обработчик закрытия панели
         document.getElementById('closeButton').addEventListener('click', () => {
             panel.remove();
+            searchPanel.remove();
+            if (observer) observer.disconnect();
+        });
+
+        async function findOperatorsWithAccess(projects, columns) {
+            const use15Columns = document.getElementById('columnRangeToggle').checked;
+            const columnMap = use15Columns ? columnMap15 : columnMap9;
+            let hasErrors = false;
+
+            const fetchProjectRules = async (project) => {
+                return new Promise((resolve) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: project.configLink,
+                        onload: (response) => {
+                            if (response.status === 200) {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(response.responseText, 'text/html');
+                                const operatorAccess = new Map();
+
+                                const rows = doc.querySelectorAll("tr");
+                                rows.forEach(row => {
+                                    const usernameElement = row.querySelector("td:first-child");
+                                    const username = usernameElement?.textContent?.trim();
+
+                                    if (username && username !== 'Имя пользователя') {
+                                        const accessibleColumns = new Set();
+                                        for (const [col, { group, type }] of Object.entries(columnMap)) {
+                                            const checkbox = row.querySelector(`td[data-group="${group}"][data-type="${type}"] input[type="checkbox"]`);
+                                            if (checkbox && checkbox.checked) {
+                                                accessibleColumns.add(Number(col));
+                                            }
+                                        }
+                                        operatorAccess.set(username, accessibleColumns);
+                                    }
+                                });
+                                resolve(operatorAccess);
+                            } else {
+                                console.error(`Ошибка загрузки правил для ${project.name}:`, response.statusText);
+                                hasErrors = true;
+                                resolve(new Map());
+                            }
+                        },
+                        onerror: (err) => {
+                            console.error(`Сетевая ошибка при загрузке правил для ${project.name}:`, err);
+                            hasErrors = true;
+                            resolve(new Map());
+                        }
+                    });
+                });
+            };
+
+            const allPromises = projects.map(fetchProjectRules);
+            const results = await Promise.all(allPromises);
+
+            if (hasErrors) {
+                alert('При поиске операторов возникли ошибки. Некоторые проекты могли быть пропущены. Подробности в консоли.');
+            }
+
+            const mergedOperatorAccess = new Map();
+            results.forEach(projectAccess => {
+                projectAccess.forEach((accessibleColumns, operator) => {
+                    if (!mergedOperatorAccess.has(operator)) {
+                        mergedOperatorAccess.set(operator, new Set());
+                    }
+                    accessibleColumns.forEach(col => mergedOperatorAccess.get(operator).add(col));
+                });
+            });
+
+            // Если заданы колонки для фильтрации
+            if (columns.length > 0) {
+                const filteredOperators = [];
+                mergedOperatorAccess.forEach((accessibleColumns, operator) => {
+                    if (columns.every(c => accessibleColumns.has(c))) {
+                        filteredOperators.push(operator);
+                    }
+                });
+                return { type: 'flat', data: filteredOperators.sort() };
+            }
+
+            // Если колонки не заданы - группируем
+            const groupedOperators = new Map();
+            mergedOperatorAccess.forEach((accessibleColumns, operator) => {
+                if (accessibleColumns.size > 0) {
+                    const sortedColumns = [...accessibleColumns].sort((a, b) => a - b);
+                    const key = sortedColumns.join(', ');
+                    if (!groupedOperators.has(key)) {
+                        groupedOperators.set(key, []);
+                    }
+                    groupedOperators.get(key).push(operator);
+                }
+            });
+
+            // Сортируем операторов внутри каждой группы
+            groupedOperators.forEach(operators => operators.sort());
+
+            return { type: 'grouped', data: groupedOperators };
+        }
+
+        const showSearchPanelBtn = document.getElementById('showSearchPanelBtn');
+        const runOperatorSearchBtn = document.getElementById('runOperatorSearchBtn');
+        const searchResultsContainer = document.getElementById('searchResultsContainer');
+        const applySearchContainer = document.getElementById('applySearchContainer');
+
+        const toggleSearchPanel = (visible) => {
+            searchPanel.classList.toggle('visible', visible);
+        };
+
+        const observer = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                // Всегда синхронизируем высоту, даже если панель поиска скрыта
+                searchPanel.style.height = `${entry.contentRect.height}px`;
+            }
+        });
+
+        observer.observe(panel);
+
+        showSearchPanelBtn.addEventListener('click', () => {
+            const isVisible = searchPanel.classList.contains('visible');
+            toggleSearchPanel(!isVisible);
+        });
+
+        runOperatorSearchBtn.addEventListener('click', async () => {
+            const columnsInput = document.getElementById('searchColumnsInput').value.trim();
+            const columns = columnsInput ? columnsInput.split(' ').map(Number).filter(n => n > 0) : [];
+
+            const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
+                .map(cb => ({
+                    name: cb.dataset.projectName,
+                    configLink: cb.dataset.configLink
+                }));
+
+            if (selectedProjects.length === 0) {
+                alert('Сначала выберите проекты на основной панели.');
+                return;
+            }
+
+            runOperatorSearchBtn.disabled = true;
+            runOperatorSearchBtn.textContent = 'Поиск...';
+            searchResultsContainer.innerHTML = 'Загрузка...';
+            searchResultsContainer.style.display = 'block';
+            applySearchContainer.style.display = 'none';
+
+            try {
+                const results = await findOperatorsWithAccess(selectedProjects, columns);
+                renderSearchResults(results);
+            } catch (error) {
+                console.error('Ошибка при поиске операторов:', error);
+                searchResultsContainer.innerHTML = '<p style="color: var(--danger-color);">Произошла ошибка. Подробности в консоли.</p>';
+            } finally {
+                runOperatorSearchBtn.disabled = false;
+                runOperatorSearchBtn.textContent = 'Найти';
+            }
+        });
+
+        function renderSearchResults(results) {
+            searchResultsContainer.innerHTML = '';
+            applySearchContainer.innerHTML = '';
+
+            const hasOperators = (results.type === 'flat' && results.data.length > 0) || (results.type === 'grouped' && results.data.size > 0);
+
+            if (results.type === 'flat') {
+                if (!hasOperators) {
+                    searchResultsContainer.innerHTML = '<p>Операторы не найдены.</p>';
+                } else {
+                    results.data.forEach(op => {
+                        searchResultsContainer.innerHTML += `
+                        <div class="operator-group-item">
+                            <input type="checkbox" class="search-result-checkbox" value="${op}" checked>
+                            <label>${op}</label>
+                        </div>`;
+                    });
+                }
+            } else if (results.type === 'grouped') {
+                if (!hasOperators) {
+                    searchResultsContainer.innerHTML = '<p>Операторы не найдены.</p>';
+                } else {
+                    const sortedGroups = new Map([...results.data.entries()].sort());
+                    sortedGroups.forEach((operators, groupKey) => {
+                        const groupId = `group-${groupKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                        const groupHtml = `
+                        <div class="operator-group">
+                            <div class="operator-group-header" data-target="${groupId}">
+                                <span>Колонки: ${groupKey} (${operators.length})</span>
+                                <input type="checkbox" class="group-select-all-checkbox" title="Выбрать всю группу">
+                            </div>
+                            <div id="${groupId}" class="operator-group-content">
+                                ${operators.map(op => `
+                                    <div class="operator-group-item">
+                                        <input type="checkbox" class="search-result-checkbox" value="${op}">
+                                        <label>${op}</label>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                        searchResultsContainer.innerHTML += groupHtml;
+                    });
+                }
+            }
+
+            if (!hasOperators) {
+                applySearchContainer.style.display = 'none';
+                return;
+            }
+
+            let applyHtml = `
+                <label class="control-label">Применить к настройкам:</label>
+                <div class="checkbox-container" style="flex-direction: column; align-items: flex-start; gap: 5px; padding-left: 10px;">
+                    <div class="operator-group-item">
+                        <input type="checkbox" id="apply-to-all-settings-checkbox" class="access-checkbox">
+                        <label for="apply-to-all-settings-checkbox" style="font-weight: bold;">Выбрать все</label>
+                    </div>`;
+
+            const fieldBlocks = document.querySelectorAll('.field-block');
+            fieldBlocks.forEach((block, index) => {
+                const title = block.querySelector('.field-block-title').childNodes[0].nodeValue.trim();
+                applyHtml += `
+                    <div class="operator-group-item">
+                        <input type="checkbox" class="apply-setting-checkbox access-checkbox" data-target-index="${index}" id="apply-setting-${index}">
+                        <label for="apply-setting-${index}">${title}</label>
+                    </div>`;
+            });
+
+            applyHtml += `</div><button id="applySelectedOperatorsBtn" class="access-button success-button" style="margin-top: 10px;">Применить выбранным</button>`;
+
+            applySearchContainer.innerHTML = applyHtml;
+            applySearchContainer.style.display = 'flex';
+        }
+
+        searchResultsContainer.addEventListener('click', event => {
+            const header = event.target.closest('.operator-group-header');
+            if (header && !event.target.classList.contains('group-select-all-checkbox')) {
+                const content = document.getElementById(header.dataset.target);
+                if (content) content.classList.toggle('visible');
+            }
+
+            if (event.target.classList.contains('group-select-all-checkbox')) {
+                const group = event.target.closest('.operator-group');
+                const isChecked = event.target.checked;
+                group.querySelectorAll('.search-result-checkbox').forEach(cb => cb.checked = isChecked);
+            }
+        });
+
+        applySearchContainer.addEventListener('click', event => {
+            const target = event.target;
+
+            if (target.id === 'apply-to-all-settings-checkbox') {
+                const isChecked = target.checked;
+                applySearchContainer.querySelectorAll('.apply-setting-checkbox').forEach(cb => cb.checked = isChecked);
+                return;
+            }
+
+            if (target.id === 'applySelectedOperatorsBtn') {
+                const selectedOperators = Array.from(searchResultsContainer.querySelectorAll('.search-result-checkbox:checked'))
+                    .map(cb => cb.value);
+
+                const selectedSettingsIndexes = Array.from(applySearchContainer.querySelectorAll('.apply-setting-checkbox:checked'))
+                    .map(cb => cb.dataset.targetIndex);
+
+                if (selectedSettingsIndexes.length === 0) {
+                    alert('Выберите хотя бы одну настройку для применения.');
+                    return;
+                }
+
+                const allTextareas = document.querySelectorAll('.usersInput.access-textarea');
+                selectedSettingsIndexes.forEach(index => {
+                    if (allTextareas[index]) {
+                        allTextareas[index].value = selectedOperators.join('\n');
+                    }
+                });
+
+                toggleSearchPanel(false);
+            }
         });
 
         async function getActiveOperators(subdomain, water) {
@@ -873,11 +1273,9 @@
                 confirmButton.disabled = true;
                 confirmButton.textContent = 'Обработка...';
 
-                // 1. Собираем все задачи в один массив
                 const tasks = [];
                 const operatorsByDomain = {};
 
-                // Сначала получаем всех операторов для всех проектов
                 for (const project of selectedProjects) {
                     try {
                         const { subdomain } = project;
@@ -888,7 +1286,6 @@
                     }
                 }
 
-                // Теперь формируем задачи на основе полученных операторов
                 for (const project of selectedProjects) {
                     const { subdomain, name } = project;
                     const operators = operatorsByDomain[subdomain];
@@ -912,7 +1309,6 @@
                             const operatorLogin = operators[operatorId];
                             for (const column of columns) {
                                 const { group, type } = columnMap[column];
-                                // Добавляем функцию, которая будет вызвана позже
                                 tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
                                     console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
                                 }));
@@ -925,10 +1321,10 @@
                 let completedOperations = 0;
                 updateProgress(0, totalOperations);
 
-                // 2. Создаем и запускаем воркеры
+                //воркеры
                 const runWorker = async () => {
                     while (tasks.length > 0) {
-                        const task = tasks.pop(); // Берем следующую задачу
+                        const task = tasks.shift();
                         if (task) {
                             await task();
                             completedOperations++;
@@ -937,7 +1333,7 @@
                     }
                 };
 
-                // 3. Запускаем пул воркеров и ждем их завершения
+                //Запуск пула воркеров
                 const workers = [];
                 for (let i = 0; i < CONCURRENT_LIMIT; i++) {
                     workers.push(runWorker());
