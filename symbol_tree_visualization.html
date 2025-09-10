@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symbol-Code Tree Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .legend {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .legend h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .symbol-table {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .symbol-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 10px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        svg {
+            width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: white;
+        }
+        .node-circle {
+            fill: #fff;
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .symbol-node {
+            fill: #4CAF50;
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .edge {
+            stroke: #666;
+            stroke-width: 2;
+            fill: none;
+        }
+        .edge-label {
+            font-family: monospace;
+            font-size: 12px;
+            fill: #000;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+        .node-label {
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            fill: #000;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+        .duplicate-warning {
+            fill: #ff6b6b;
+            stroke: #d63031;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Symbol-Code Tree Visualization</h1>
+        
+        <div class="legend">
+            <h3>Symbol-Code Pairs</h3>
+            <div class="symbol-table">
+                <div class="symbol-item"><span>S6</span><span>000</span></div>
+                <div class="symbol-item"><span>S3</span><span>001</span></div>
+                <div class="symbol-item"><span>S2</span><span>011</span></div>
+                <div class="symbol-item"><span>S10</span><span>010</span></div>
+                <div class="symbol-item"><span>S8</span><span>100</span></div>
+                <div class="symbol-item"><span>S7</span><span>101</span></div>
+                <div class="symbol-item"><span>S5</span><span>1100</span></div>
+                <div class="symbol-item"><span>S11</span><span>1110</span></div>
+                <div class="symbol-item"><span>S12</span><span>1100*</span></div>
+                <div class="symbol-item"><span>S1</span><span>111110</span></div>
+                <div class="symbol-item"><span>S9</span><span>11110</span></div>
+                <div class="symbol-item"><span>S4</span><span>111111</span></div>
+            </div>
+            <p><strong>Note:</strong> * indicates duplicate code (S12 and S5 both have code 1100)</p>
+        </div>
+
+        <svg viewBox="0 0 1200 750" xmlns="http://www.w3.org/2000/svg">
+            <!-- Root node -->
+            <circle cx="600" cy="50" r="15" class="node-circle"/>
+            <text x="600" y="55" class="node-label">ROOT</text>
+            
+            <!-- Level 1: 0 and 1 branches -->
+            <line x1="600" y1="65" x2="400" y2="135" class="edge"/>
+            <text x="500" y="95" class="edge-label">0</text>
+            <circle cx="400" cy="150" r="12" class="node-circle"/>
+            
+            <line x1="600" y1="65" x2="800" y2="135" class="edge"/>
+            <text x="700" y="95" class="edge-label">1</text>
+            <circle cx="800" cy="150" r="12" class="node-circle"/>
+            
+            <!-- Level 2: 00, 01, 10, 11 branches -->
+            <!-- 00 branch -->
+            <line x1="400" y1="162" x2="250" y2="232" class="edge"/>
+            <text x="325" y="195" class="edge-label">0</text>
+            <circle cx="250" cy="250" r="12" class="node-circle"/>
+            
+            <!-- 01 branch -->
+            <line x1="400" y1="162" x2="450" y2="232" class="edge"/>
+            <text x="425" y="195" class="edge-label">1</text>
+            <circle cx="450" cy="250" r="12" class="node-circle"/>
+            
+            <!-- 10 branch -->
+            <line x1="800" y1="162" x2="650" y2="232" class="edge"/>
+            <text x="725" y="195" class="edge-label">0</text>
+            <circle cx="650" cy="250" r="12" class="node-circle"/>
+            
+            <!-- 11 branch -->
+            <line x1="800" y1="162" x2="950" y2="232" class="edge"/>
+            <text x="875" y="195" class="edge-label">1</text>
+            <circle cx="950" cy="250" r="12" class="node-circle"/>
+            
+            <!-- Level 3: Terminal nodes for 3-bit codes -->
+            <!-- 000 -> S6 -->
+            <line x1="250" y1="262" x2="180" y2="332" class="edge"/>
+            <text x="215" y="295" class="edge-label">0</text>
+            <circle cx="180" cy="350" r="15" class="symbol-node"/>
+            <text x="180" y="355" class="node-label">S6</text>
+            <text x="180" y="375" class="edge-label">000</text>
+            
+            <!-- 001 -> S3 -->
+            <line x1="250" y1="262" x2="320" y2="332" class="edge"/>
+            <text x="285" y="295" class="edge-label">1</text>
+            <circle cx="320" cy="350" r="15" class="symbol-node"/>
+            <text x="320" y="355" class="node-label">S3</text>
+            <text x="320" y="375" class="edge-label">001</text>
+            
+            <!-- 010 -> S10 -->
+            <line x1="450" y1="262" x2="380" y2="332" class="edge"/>
+            <text x="415" y="295" class="edge-label">0</text>
+            <circle cx="380" cy="350" r="15" class="symbol-node"/>
+            <text x="380" y="355" class="node-label">S10</text>
+            <text x="380" y="375" class="edge-label">010</text>
+            
+            <!-- 011 -> S2 -->
+            <line x1="450" y1="262" x2="520" y2="332" class="edge"/>
+            <text x="485" y="295" class="edge-label">1</text>
+            <circle cx="520" cy="350" r="15" class="symbol-node"/>
+            <text x="520" y="355" class="node-label">S2</text>
+            <text x="520" y="375" class="edge-label">011</text>
+            
+            <!-- 100 -> S8 -->
+            <line x1="650" y1="262" x2="580" y2="332" class="edge"/>
+            <text x="615" y="295" class="edge-label">0</text>
+            <circle cx="580" cy="350" r="15" class="symbol-node"/>
+            <text x="580" y="355" class="node-label">S8</text>
+            <text x="580" y="375" class="edge-label">100</text>
+            
+            <!-- 101 -> S7 -->
+            <line x1="650" y1="262" x2="720" y2="332" class="edge"/>
+            <text x="685" y="295" class="edge-label">1</text>
+            <circle cx="720" cy="350" r="15" class="symbol-node"/>
+            <text x="720" y="355" class="node-label">S7</text>
+            <text x="720" y="375" class="edge-label">101</text>
+            
+            <!-- 11 branch continues -->
+            <!-- 110 branch -->
+            <line x1="950" y1="262" x2="850" y2="332" class="edge"/>
+            <text x="900" y="295" class="edge-label">0</text>
+            <circle cx="850" cy="350" r="12" class="node-circle"/>
+            
+            <!-- 111 branch -->
+            <line x1="950" y1="262" x2="1050" y2="332" class="edge"/>
+            <text x="1000" y="295" class="edge-label">1</text>
+            <circle cx="1050" cy="350" r="12" class="node-circle"/>
+            
+            <!-- Level 4: 1100, 1101, 1110, 1111 -->
+            <!-- 1100 -> S5 and S12 (duplicate codes) -->
+            <line x1="850" y1="362" x2="780" y2="432" class="edge"/>
+            <text x="815" y="395" class="edge-label">0</text>
+            <circle cx="780" cy="450" r="15" class="symbol-node duplicate-warning"/>
+            <text x="780" y="450" class="node-label">S5</text>
+            <text x="780" y="470" class="edge-label">1100</text>
+            <text x="780" y="485" class="edge-label" style="fill: #ff6b6b;">(S12)</text>
+            
+            <!-- 1101 (no symbol) -->
+            <line x1="850" y1="362" x2="920" y2="432" class="edge"/>
+            <text x="885" y="395" class="edge-label">1</text>
+            <circle cx="920" cy="450" r="12" class="node-circle"/>
+            
+            <!-- 1110 -> S11 -->
+            <line x1="1050" y1="362" x2="980" y2="432" class="edge"/>
+            <text x="1015" y="395" class="edge-label">0</text>
+            <circle cx="980" cy="450" r="15" class="symbol-node"/>
+            <text x="980" y="455" class="node-label">S11</text>
+            <text x="980" y="475" class="edge-label">1110</text>
+            
+            <!-- 1111 branch -->
+            <line x1="1050" y1="362" x2="1120" y2="432" class="edge"/>
+            <text x="1085" y="395" class="edge-label">1</text>
+            <circle cx="1120" cy="450" r="12" class="node-circle"/>
+            
+            <!-- Level 5: 11110, 11111 -->
+            <!-- 11110 -> S9 -->
+            <line x1="1120" y1="462" x2="1050" y2="532" class="edge"/>
+            <text x="1085" y="495" class="edge-label">0</text>
+            <circle cx="1050" cy="550" r="15" class="symbol-node"/>
+            <text x="1050" y="555" class="node-label">S9</text>
+            <text x="1050" y="575" class="edge-label">11110</text>
+            
+            <!-- 11111 branch -->
+            <line x1="1120" y1="462" x2="1190" y2="532" class="edge"/>
+            <text x="1155" y="495" class="edge-label">1</text>
+            <circle cx="1190" cy="550" r="12" class="node-circle"/>
+            
+            <!-- Level 6: 111110, 111111 -->
+            <!-- 111110 -> S1 -->
+            <line x1="1190" y1="562" x2="1120" y2="632" class="edge"/>
+            <text x="1155" y="595" class="edge-label">0</text>
+            <circle cx="1120" cy="650" r="15" class="symbol-node"/>
+            <text x="1120" y="655" class="node-label">S1</text>
+            <text x="1120" y="675" class="edge-label">111110</text>
+            
+            <!-- 111111 -> S4 -->
+            <line x1="1190" y1="562" x2="1260" y2="632" class="edge"/>
+            <text x="1225" y="595" class="edge-label">1</text>
+            <circle cx="1260" cy="650" r="15" class="symbol-node"/>
+            <text x="1260" y="655" class="node-label">S4</text>
+            <text x="1260" y="675" class="edge-label">111111</text>
+        </svg>
+    </div>
+</body>
+</html>
