@@ -63,6 +63,61 @@
 
     debug('Инициализация скрипта');
 
+    // Функция для загрузки и парсинга данных проектов с GitHub
+    async function loadProjectCategories() {
+        const url = 'https://raw.githubusercontent.com/ReRu4/LeadVertex/refs/heads/main/projects.md';
+
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                onload: (response) => {
+                    if (response.status === 200) {
+                        try {
+                            const categories = parseProjectData(response.responseText);
+                            resolve(categories);
+                        } catch (e) {
+                            console.error('Ошибка парсинга данных проектов:', e);
+                            resolve(new Map()); // Возвращаем пустую карту в случае ошибки
+                        }
+                    } else {
+                        console.error('Ошибка загрузки данных проектов:', response.statusText);
+                        resolve(new Map());
+                    }
+                },
+                onerror: (err) => {
+                    console.error('Сетевая ошибка при загрузке данных проектов:', err);
+                    resolve(new Map());
+                }
+            });
+        });
+    }
+
+    // Функция для парсинга табличных данных проектов
+    function parseProjectData(data) {
+        const lines = data.split('\n');
+        const categories = new Map();
+
+        for (const line of lines) {
+            const parts = line.split('\t').map(part => part.trim());
+
+            if (parts.length >= 2) {
+                const category = parts[0];
+                const project = parts[1];
+
+                // Пропускаем строки с "--" и пустые проекты
+                if (category && project && category !== '--' && !category.includes('--')) {
+                    if (!categories.has(category)) {
+                        categories.set(category, []);
+                    }
+                    categories.get(category).push(project);
+                }
+            }
+        }
+
+        return categories;
+    }
+
     const columnMap15 = {
         1: { group: "1", type: "0" },
         2: { group: "1", type: "1" },
@@ -94,6 +149,9 @@
         8: { group: "5", type: "1" },
         9: { group: "5", type: "2" },
     };
+
+    // Глобальная переменная для хранения категорий проектов
+    let projectCategories = new Map();
 
 
     // стили в head
@@ -664,6 +722,34 @@
 
         debug(`Всего добавлено проектов: ${projectCount}`);
 
+        // Загрузка категорий проектов с GitHub
+        loadProjectCategories().then(categories => {
+            projectCategories = categories;
+            if (categories.size > 0) {
+                debug(`Загружено категорий проектов: ${categories.size}`);
+                populateTemplateSelect();
+            } else {
+                debug('Не удалось загрузить категории проектов с GitHub');
+            }
+        });
+
+        // Функция для заполнения селекта шаблонов категориями
+        function populateTemplateSelect() {
+            const templateSelect = document.getElementById('templateSelect');
+
+            // Удаляем все существующие категории
+            const existingCategories = templateSelect.querySelectorAll('option[value^="category_"]');
+            existingCategories.forEach(option => option.remove());
+
+            // Добавляем категории как новые опции
+            projectCategories.forEach((projects, category) => {
+                const option = document.createElement('option');
+                option.value = `category_${category}`;
+                option.textContent = category;
+                templateSelect.appendChild(option);
+            });
+        }
+
         // Обработчики событий для списка проектов
         toggleButton.addEventListener('click', () => {
             const isVisible = namesList.style.display !== 'none';
@@ -787,6 +873,58 @@
             const fieldsContainer = document.getElementById('fieldsContainer');
             fieldsContainer.innerHTML = '';
             fieldCounter = 0;
+
+            if (selectedTemplate.startsWith("category_")) {
+                // Обработка выбора категории
+                const categoryName = selectedTemplate.replace("category_", "");
+                const categoryProjects = projectCategories.get(categoryName) || [];
+
+                // Снимаем галочки со всех проектов
+                const checkboxes = document.querySelectorAll('#namesList input[type="checkbox"]');
+                checkboxes.forEach(checkbox => checkbox.checked = false);
+
+                // Отмечаем проекты из выбранной категории
+                checkboxes.forEach(checkbox => {
+                    const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
+                    const subdomain = checkbox.value;
+
+                    if (categoryProjects.some(project =>
+                        projectName.includes(project.toLowerCase()) ||
+                        subdomain.includes(project.toLowerCase())
+                    )) {
+                        checkbox.checked = true;
+                    }
+                });
+
+                // Создаем базовый блок настроек для категории
+                fieldCounter++;
+                const fieldBlock = document.createElement('div');
+                fieldBlock.className = 'field-block additionalBlock';
+                fieldBlock.innerHTML = `
+                    <div class="field-block-title">
+                        Настройка для категории: ${categoryName}
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Колонки (через пробел):</label>
+                        <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
+                        <span class="hint-text">Введите "all" для выбора всех колонок</span>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Операторы:</label>
+                        <textarea rows="3" class="usersInput access-textarea" placeholder="По одному оператору на строку"></textarea>
+                        <span class="hint-text">Введите "all" для выбора всех операторов</span>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">Действие:</label>
+                        <select class="actionSelect access-select">
+                            <option value="1">Включить доступ</option>
+                            <option value="0">Отключить доступ</option>
+                        </select>
+                    </div>
+                `;
+                fieldsContainer.appendChild(fieldBlock);
+                return;
+            }
 
             if (selectedTemplate === "template1") {
                 // Шаблон ночников
