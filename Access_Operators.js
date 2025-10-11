@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.5.0
+// @version      2.3.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -66,7 +66,7 @@
     // Функция для загрузки и парсинга данных проектов с GitHub
     async function loadProjectCategories() {
         const url = 'https://raw.githubusercontent.com/ReRu4/LeadVertex/refs/heads/main/projects.md';
-
+        
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -97,14 +97,14 @@
     function parseProjectData(data) {
         const lines = data.split('\n');
         const categories = new Map();
-
+        
         for (const line of lines) {
             const parts = line.split('\t').map(part => part.trim());
-
+            
             if (parts.length >= 2) {
                 const category = parts[0];
                 const project = parts[1];
-
+                
                 // Пропускаем строки с "--" и пустые проекты
                 if (category && project && category !== '--' && !category.includes('--')) {
                     if (!categories.has(category)) {
@@ -114,7 +114,7 @@
                 }
             }
         }
-
+        
         return categories;
     }
 
@@ -153,7 +153,6 @@
     // Глобальная переменная для хранения категорий проектов
     let projectCategories = new Map();
     let operatorsCache = {};
-    // cache for fetched project rules to avoid repeated HTTP fetch/parsing
     const rulesCache = new Map();
 
 
@@ -524,15 +523,15 @@
     function makeSafeId(str) {
         if (!str) return '';
         try {
-            // base64url encode unicode string: btoa(unescape(encodeURIComponent(str)))
+            // base64url: кодирование Unicode (btoa(unescape(encodeURIComponent(str))))
             const utf8 = encodeURIComponent(str);
-            // unescape is deprecated but acceptable here to get binary string for btoa
+            // unescape устарел, но здесь допустим для получения бинарной строки для btoa
             const binary = unescape(utf8);
             const b64 = btoa(binary);
             const b64url = b64.replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
             return `id-${b64url}`;
         } catch (e) {
-            // fallback: replace non-alphanumerics with '-'
+            // запасной вариант: заменить неалфавитно-цифровые символы на '-'
             return `id-${str.replace(/[^a-zA-Z0-9]+/g, '-')}`;
         }
     }
@@ -638,7 +637,6 @@
                         <div class="control-group projects-or-category">
                             <label class="control-label">Категория (шаблон):</label>
                             <select class="categorySelect access-select"></select>
-                            <span class="hint-text">Если не выбрана — будут использованы глобально выбранные таблицы.</span>
                         </div>
                     </div>
                 </div>
@@ -704,7 +702,7 @@
         `;
         document.body.appendChild(searchPanel);
 
-        // setup clipboard modal and button placement
+    // Настройка модалки вставки и размещение кнопки
         (function setupClipboardTool(){
             const pasteModal = document.createElement('div');
             pasteModal.id = 'pasteModal';
@@ -737,7 +735,7 @@
                 catch (err) { alert('Ошибка разбора шаблона: ' + (err && err.message ? err.message : err)); }
             });
 
-            // place button next to search panel toggle (showSearchPanelBtn)
+            // Разместить кнопку рядом с переключателем панели поиска (showSearchPanelBtn)
             setTimeout(() => {
                 const showBtn = document.getElementById('showSearchPanelBtn');
                 if (showBtn && showBtn.parentElement) {
@@ -890,11 +888,11 @@
         // Функция для заполнения селекта шаблонов категориями
         function populateTemplateSelect() {
             const templateSelect = document.getElementById('templateSelect');
-
+            
             // Удаляем все существующие категории
             const existingCategories = templateSelect.querySelectorAll('option[value^="category_"]');
             existingCategories.forEach(option => option.remove());
-
+            
             // Добавляем категории как новые опции
             projectCategories.forEach((projects, category) => {
                 const option = document.createElement('option');
@@ -952,6 +950,7 @@
                 <div class="control-group projects-or-category">
                     <label class="control-label">Категория (шаблон):</label>
                     <select class="categorySelect access-select"></select>
+                    <span class="hint-text">Если не выбрана — будут использованы глобально выбранные таблицы.</span>
                 </div>
             `;
 
@@ -982,7 +981,7 @@
             fieldCounter = blocks.length;
         }
 
-
+        
 
         // Заполнение .categorySelect опциями на основе projectCategories
         function fillCategorySelects() {
@@ -1065,7 +1064,7 @@
                 const ln = lines[i];
                 if (!ln) { pushBlock(); continue; }
 
-                // Заголовки категорий — строка должна содержать хотя бы одну букву (чтобы не принимать числовые строки за заголовки)
+                // Категория: строка с буквой
                 if (/.*\p{L}.*/u.test(ln) && !/[_@\.=]/.test(ln)) {
                     pushBlock(); currentCategory = ln; currentBlock = null; continue;
                 }
@@ -1085,7 +1084,7 @@
                     continue;
                 }
 
-                // Возможно, строка — просто список цифр (колонки). Такие строки теперь явно трактуются как колонки.
+                // Чисто цифровая строка — колонки
                 const maybeCols = ln.split(/\s+/).map(x=>Number(x)).filter(n=>!Number.isNaN(n));
                 if (maybeCols.length) {
                     if (!currentCategory) throw new Error('Найдены колонки до указания категории');
@@ -1136,7 +1135,7 @@
             });
         }
 
-        // Общая функция для получения правил доступа проекта
+    // Получить правила доступа проекта (парсинг конфигурации)
         async function fetchProjectRules(project) {
             const key = project.configLink || project.subdomain || project.name;
             if (rulesCache.has(key)) {
@@ -1172,7 +1171,7 @@
                                 }
                             });
                             resolve({ project, access: operatorAccess, error: null });
-                            // cache parsed rules
+                            // кешировать распаршенные правила
                             try { rulesCache.set(key, { project, access: operatorAccess, error: null }); } catch(e){}
                         } else {
                             console.error(`Ошибка загрузки правил для ${project.name}:`, response.statusText);
@@ -1205,24 +1204,24 @@
                 // Обработка выбора категории
                 const categoryName = selectedTemplate.replace("category_", "");
                 const categoryProjects = projectCategories.get(categoryName) || [];
-
+                
                 // Снимаем галочки со всех проектов
                 const checkboxes = document.querySelectorAll('#namesList input[type="checkbox"]');
                 checkboxes.forEach(checkbox => checkbox.checked = false);
-
+                
                 // Отмечаем проекты из выбранной категории
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
                     const subdomain = checkbox.value;
-
-                    if (categoryProjects.some(project =>
-                        projectName.includes(project.toLowerCase()) ||
+                    
+                    if (categoryProjects.some(project => 
+                        projectName.includes(project.toLowerCase()) || 
                         subdomain.includes(project.toLowerCase())
                     )) {
                         checkbox.checked = true;
                     }
                 });
-
+                
                 // Создаем базовый блок настроек для категории
                 fieldCounter++;
                 const fieldBlock = document.createElement('div');
@@ -1386,7 +1385,7 @@
         async function findOperatorsWithAccess(projects, columns) {
             let hasErrors = false;
 
-            // fetch rules for unique projects using cache and bounded concurrency
+            // загрузить правила для уникальных проектов с использованием кеша и ограниченной параллельности
             const results = await fetchRulesForProjects(projects);
 
             results.forEach(result => {
@@ -1438,9 +1437,9 @@
             return { type: 'grouped', data: groupedOperators };
         }
 
-        // Helper: fetch rules for an array of project objects (uses rulesCache and bounded concurrency)
-        async function fetchRulesForProjects(projects) {
-            // Normalize unique project keys to avoid duplicate fetches
+    // Получить правила для нескольких проектов (использует кеш и ограничение параллельности)
+    async function fetchRulesForProjects(projects) {
+            // Нормализовать ключи проектов для исключения повторных загрузок
             const unique = [];
             const seen = new Set();
             projects.forEach(p => {
@@ -1451,7 +1450,7 @@
                 }
             });
 
-            // For those not in cache, prepare fetch tasks
+            // Подготовить задачи загрузки для проектов, отсутствующих в кеше
             const toFetch = [];
             unique.forEach(p => {
                 const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
@@ -1459,11 +1458,10 @@
             });
 
             if (toFetch.length > 0) {
-                // run fetches with concurrency limit
                 await runWithConcurrency(toFetch.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
             }
 
-            // Collect results from cache in original unique order
+            // Собрать результаты из кеша
             const results = unique.map(p => {
                 const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
                 return rulesCache.get(key) || { project: p, access: new Map(), error: 'no-data' };
@@ -1550,7 +1548,7 @@
             const selectedBySubdomain = new Map();
             selectedProjects.forEach(p => selectedBySubdomain.set(p.subdomain || p.name.toLowerCase().replace(/\s+/g,'-'), p));
 
-            // Для оптимизации: сначала соберём все проекты, которые участвуют хотя бы в одной выбранной категории
+            // Агрегация: соберём проекты, участвующие в выбранных категориях
             const categoryResults = new Map();
             const categoryToMatched = new Map();
             const allMatchedProjects = [];
@@ -1561,7 +1559,7 @@
                     for (const [subdomain, proj] of selectedBySubdomain.entries()) {
                         const pname = (proj.name || '').toLowerCase();
                         if (pname.includes(projNameFragment.toLowerCase()) || subdomain.includes(projNameFragment.toLowerCase())) {
-                            // avoid duplicates
+                            // избегать дубликатов
                             if (!matchedProjects.some(mp => (mp.configLink || mp.name) === (proj.configLink || proj.name))) matchedProjects.push(proj);
                         }
                     }
@@ -1574,7 +1572,7 @@
 
             if (allMatchedProjects.length === 0) return categoryResults;
 
-            // Уникальные проекты и единичная загрузка их правил
+            // Уникальные проекты — загрузим их правила единожды
             const uniqueProjects = [];
             const seen = new Set();
             allMatchedProjects.forEach(p => {
@@ -2319,14 +2317,14 @@
                 const templatesPerSetting = document.getElementById('templatesPerSettingToggle')?.checked;
                 const perBlockProjects = [];
                 if (templatesPerSetting) {
-                    // Build per-block projects: prefer selected category -> projects from projectCategories
+                    // Построить проекты для каждого блока: предпочитать выбранную категорию -> проекты из projectCategories
                     Array.from(fieldBlocks).forEach(block => {
                         const catSel = block.querySelector('.categorySelect');
                         if (catSel && catSel.value) {
                             const cat = catSel.value;
                             const fragments = projectCategories.get(cat) || [];
                             const matched = [];
-                            // find matching projects from namesList by fragment match
+                            // найти соответствующие проекты в namesList по фрагментам
                             document.querySelectorAll('#namesList .project-item').forEach(item => {
                                 const cb = item.querySelector('input[type="checkbox"]');
                                 const label = item.querySelector('.project-name');
