@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.6.0
+// @version      2.7.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -2190,35 +2190,45 @@
                 container.innerHTML = '<p>Операторы не найдены в выбранных категориях.</p>';
                 return;
             }
-
             let html = '';
+            let operatorIndex = 0;
+
             for (const [category, mapForCategory] of categoryResults.entries()) {
-                html += `<div class="operator-group" style="padding:10px; border-radius:6px; background:#eef5ff; margin-bottom:10px;">`;
-                html += `<div style="font-weight:700; margin-bottom:8px;">Категория: ${category}</div>`;
+                // Небольшой заголовок категории
+                html += `<div style="margin-bottom:8px;"><strong>Категория: ${category}</strong></div>`;
 
                 // mapForCategory: Map(opLower -> {name, foundIn, notFoundIn})
-                for (const [opLower, info] of mapForCategory.entries()) {
-                    html += `<div style="padding:8px; background:#fff; border-radius:6px; margin-bottom:8px;">`;
-                    html += `<div style="font-weight:600; display:flex; align-items:center; gap:8px;"><span>Оператор: ${info.name}</span></div>`;
+                mapForCategory.forEach((info, opLower) => {
+                    const detailsId = `not-found-details-${makeSafeId(category)}-${operatorIndex}`;
+                    html += `<div class="operator-group" style="padding: 10px; border-radius: 6px; background: #f0f4f8; margin-bottom: 12px;">`;
+                    html += `<div class="operator-group-header" style="background: none; padding: 0; font-size: 16px; display: flex; justify-content: space-between; align-items: center;">`;
+                    html += `<strong>Оператор: ${info.name}</strong>`;
 
-                    if (info.notFoundIn.size > 0) {
-                        html += `<div style="color:#6c757d; font-size:13px; margin-top:4px;">Не найден в проектах: ${[...info.notFoundIn].sort().join(', ')}</div>`;
+                    if (info.notFoundIn && info.notFoundIn.size > 0) {
+                        html += `<span class="info-icon" title="Показать проекты, где оператор не найден" data-target-id="${detailsId}" style="cursor: pointer; font-size: 18px;">ℹ️</span>`;
+                    }
+                    html += `</div>`; // end header
+
+                    if (info.notFoundIn && info.notFoundIn.size > 0) {
+                        html += `<div id="${detailsId}" class="not-found-details" style="display: none; padding: 8px; margin-top: 8px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px;">`;
+                        html += `<strong style="font-size: 13px;">Не найден в проектах:</strong><br/>`;
+                        html += [...info.notFoundIn].sort().join('<br/>');
+                        html += `</div>`;
                     }
 
-                    if (info.foundIn.size === 0) {
-                        html += `<div style="padding-left:10px; color:#6c757d; margin-top:6px;">Нет доступов в проектах категории.</div>`;
+                    if (!info.foundIn || info.foundIn.size === 0) {
+                        html += `<div style="padding-left: 15px; margin-top: 5px; color: #6c757d;">Нет доступов в выбранных проектах.</div>`;
                     } else {
-                        const sorted = new Map([...info.foundIn.entries()].sort());
-                        sorted.forEach((colsSet, projectName) => {
-                            const cols = [...colsSet].sort((a,b)=>a-b).join(', ');
-                            html += `<div style="padding-left:12px; margin-top:6px;">${projectName}: <strong>${cols}</strong></div>`;
+                        const sortedProjects = new Map([...info.foundIn.entries()].sort());
+                        sortedProjects.forEach((columns, projectName) => {
+                            const sortedColumns = [...columns].sort((a, b) => a - b).join(', ');
+                            html += `<div style="padding-left: 15px; margin-top: 5px;"><strong>${projectName}:</strong> ${sortedColumns}</div>`;
                         });
                     }
 
-                    html += `</div>`;
-                }
-
-                html += `</div>`;
+                    html += `</div>`; // end operator-group
+                    operatorIndex++;
+                });
             }
 
             container.innerHTML = html;
