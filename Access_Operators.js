@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.3.0
+// @version      2.6.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -66,7 +66,7 @@
     // Функция для загрузки и парсинга данных проектов с GitHub
     async function loadProjectCategories() {
         const url = 'https://raw.githubusercontent.com/ReRu4/LeadVertex/refs/heads/main/projects.md';
-        
+
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -97,14 +97,14 @@
     function parseProjectData(data) {
         const lines = data.split('\n');
         const categories = new Map();
-        
+
         for (const line of lines) {
             const parts = line.split('\t').map(part => part.trim());
-            
+
             if (parts.length >= 2) {
                 const category = parts[0];
                 const project = parts[1];
-                
+
                 // Пропускаем строки с "--" и пустые проекты
                 if (category && project && category !== '--' && !category.includes('--')) {
                     if (!categories.has(category)) {
@@ -114,7 +114,7 @@
                 }
             }
         }
-        
+
         return categories;
     }
 
@@ -772,9 +772,10 @@
 
         // Обработчик добавления нового поля настроек (обновлён: заполняем категории и применяем видимость)
 
-        // Панель настроек скрипта (простой блок в основной панели)
+        // Скрытый блок настроек: чекбокс хранится в DOM, но управление отображением — через отдельное окно
         const scriptSettingsBlock = document.createElement('div');
         scriptSettingsBlock.style.marginTop = '8px';
+        scriptSettingsBlock.style.display = 'none';
         scriptSettingsBlock.innerHTML = `
             <div style="display:flex; align-items:center; gap:8px;">
                 <label style="display:flex; align-items:center; gap:8px;">
@@ -786,6 +787,13 @@
         panel.appendChild(scriptSettingsBlock);
 
         // Инициализация видимости глобальных контролов и слушатель переключения режима
+        // Применяем сохранённое значение из localStorage (если есть)
+        const savedTemplatesPerSetting = localStorage.getItem('proZvon_templatesPerSetting');
+        if (savedTemplatesPerSetting !== null) {
+            const saved = savedTemplatesPerSetting === '1';
+            const tgl = document.getElementById('templatesPerSettingToggle');
+            if (tgl) tgl.checked = saved;
+        }
         updateGlobalProjectControlsVisibility();
         const tmplToggle = document.getElementById('templatesPerSettingToggle');
         if (tmplToggle) {
@@ -794,6 +802,88 @@
                 updateGlobalProjectControlsVisibility();
             });
         }
+
+        // Открыть модальное окно настроек внутри страницы
+        document.getElementById('openScriptSettingsBtn').addEventListener('click', () => {
+            // Создаём оверлей и модалку один раз
+            let overlay = document.getElementById('settingsOverlay');
+            let modal = document.getElementById('settingsModal');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'settingsOverlay';
+                overlay.style.position = 'fixed';
+                overlay.style.left = '0';
+                overlay.style.top = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.background = 'rgba(0,0,0,0.45)';
+                overlay.style.zIndex = '10002';
+                overlay.style.display = 'none';
+                document.body.appendChild(overlay);
+            }
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'settingsModal';
+                modal.style.position = 'fixed';
+                modal.style.left = '50%';
+                modal.style.top = '50%';
+                modal.style.transform = 'translate(-50%,-50%)';
+                modal.style.background = '#fff';
+                modal.style.border = '1px solid #ccc';
+                modal.style.padding = '12px';
+                modal.style.zIndex = '10003';
+                modal.style.width = '520px';
+                modal.style.borderRadius = '6px';
+                modal.style.display = 'none';
+                modal.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0;">Настройки скрипта</h3>
+                        <button id="settingsCloseBtn" class="access-button secondary-button" style="padding:4px 8px;">✕</button>
+                    </div>
+                    <div style="margin:12px 0;">
+                        <label style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="settings_templatesPerSetting"> Включать шаблоны в рамках одной настройки (per-setting)
+                        </label>
+                    </div>
+                    <div style="margin-top:6px; color:#666; font-size:13px;">Изменения применяются немедленно.</div>
+                `;
+                document.body.appendChild(modal);
+
+                modal.querySelector('#settingsCloseBtn').addEventListener('click', hideSettingsModal);
+
+                // обработчик изменения чекбокса внутри модалки
+                modal.querySelector('#settings_templatesPerSetting').addEventListener('change', (ev) => {
+                    const checked = ev.target.checked;
+                    const hiddenToggle = document.getElementById('templatesPerSettingToggle');
+                    if (hiddenToggle) hiddenToggle.checked = checked;
+                    // сохраняем
+                    localStorage.setItem('proZvon_templatesPerSetting', checked ? '1' : '0');
+                    // применяем изменения
+                    updateProjectsOrCategoryUI();
+                    updateGlobalProjectControlsVisibility();
+                });
+            }
+
+            // показать модалку
+            function showSettingsModal() {
+                const modalEl = document.getElementById('settingsModal');
+                const overlayEl = document.getElementById('settingsOverlay');
+                const saved = localStorage.getItem('proZvon_templatesPerSetting') === '1';
+                const cb = modalEl.querySelector('#settings_templatesPerSetting');
+                if (cb) cb.checked = saved;
+                overlayEl.style.display = 'block';
+                modalEl.style.display = 'block';
+            }
+
+            function hideSettingsModal() {
+                const modalEl = document.getElementById('settingsModal');
+                const overlayEl = document.getElementById('settingsOverlay');
+                if (overlayEl) overlayEl.style.display = 'none';
+                if (modalEl) modalEl.style.display = 'none';
+            }
+
+            showSettingsModal();
+        });
 
 
         const confirmButton = document.getElementById('confirmButton');
@@ -888,11 +978,11 @@
         // Функция для заполнения селекта шаблонов категориями
         function populateTemplateSelect() {
             const templateSelect = document.getElementById('templateSelect');
-            
+
             // Удаляем все существующие категории
             const existingCategories = templateSelect.querySelectorAll('option[value^="category_"]');
             existingCategories.forEach(option => option.remove());
-            
+
             // Добавляем категории как новые опции
             projectCategories.forEach((projects, category) => {
                 const option = document.createElement('option');
@@ -950,7 +1040,6 @@
                 <div class="control-group projects-or-category">
                     <label class="control-label">Категория (шаблон):</label>
                     <select class="categorySelect access-select"></select>
-                    <span class="hint-text">Если не выбрана — будут использованы глобально выбранные таблицы.</span>
                 </div>
             `;
 
@@ -981,7 +1070,7 @@
             fieldCounter = blocks.length;
         }
 
-        
+
 
         // Заполнение .categorySelect опциями на основе projectCategories
         function fillCategorySelects() {
@@ -1204,24 +1293,24 @@
                 // Обработка выбора категории
                 const categoryName = selectedTemplate.replace("category_", "");
                 const categoryProjects = projectCategories.get(categoryName) || [];
-                
+
                 // Снимаем галочки со всех проектов
                 const checkboxes = document.querySelectorAll('#namesList input[type="checkbox"]');
                 checkboxes.forEach(checkbox => checkbox.checked = false);
-                
+
                 // Отмечаем проекты из выбранной категории
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
                     const subdomain = checkbox.value;
-                    
-                    if (categoryProjects.some(project => 
-                        projectName.includes(project.toLowerCase()) || 
+
+                    if (categoryProjects.some(project =>
+                        projectName.includes(project.toLowerCase()) ||
                         subdomain.includes(project.toLowerCase())
                     )) {
                         checkbox.checked = true;
                     }
                 });
-                
+
                 // Создаем базовый блок настроек для категории
                 fieldCounter++;
                 const fieldBlock = document.createElement('div');
