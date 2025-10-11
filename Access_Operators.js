@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.4.0
+// @version      2.5.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -152,6 +152,9 @@
 
     // Глобальная переменная для хранения категорий проектов
     let projectCategories = new Map();
+    let operatorsCache = {};
+    // cache for fetched project rules to avoid repeated HTTP fetch/parsing
+    const rulesCache = new Map();
 
 
     // стили в head
@@ -518,8 +521,44 @@
         }
     `);
 
+    function makeSafeId(str) {
+        if (!str) return '';
+        try {
+            // base64url encode unicode string: btoa(unescape(encodeURIComponent(str)))
+            const utf8 = encodeURIComponent(str);
+            // unescape is deprecated but acceptable here to get binary string for btoa
+            const binary = unescape(utf8);
+            const b64 = btoa(binary);
+            const b64url = b64.replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
+            return `id-${b64url}`;
+        } catch (e) {
+            // fallback: replace non-alphanumerics with '-'
+            return `id-${str.replace(/[^a-zA-Z0-9]+/g, '-')}`;
+        }
+    }
+
+    async function runWithConcurrency(tasks, limit) {
+        const results = [];
+        const executing = [];
+
+        for (const task of tasks) {
+            const p = Promise.resolve().then(() => task());
+            results.push(p);
+
+            if (limit <= 0) continue;
+
+            const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+            executing.push(e);
+
+            if (executing.length >= limit) {
+                await Promise.race(executing);
+            }
+        }
+
+        return Promise.all(results);
+    }
+
     if (location.href.includes("settings.html")) {
-        debug('Обнаружена страница настроек, инициализация интерфейса');
         // панель настроек доступа
         const panel = document.createElement('div');
         panel.className = 'access-panel';
@@ -529,7 +568,10 @@
                     <h3 class="panel-title">Настройка доступа</h3>
                     <button id="showSearchPanelBtn" class="access-button secondary-button" title="Найти операторов" style="padding: 5px 8px; font-size: 12px;">🔍</button>
                 </div>
-                <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="openScriptSettingsBtn" class="access-button secondary-button" title="Настройки скрипта" style="padding: 5px 8px; font-size: 12px;">⚙️</button>
+                    <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+                </div>
             </div>
 
             <div class="control-group">
@@ -548,8 +590,8 @@
                 </div>
             </div>
 
-            <div class="control-group">
-                <label class="control-label">Выберите таблицы:</label>
+            <div class="control-group" id="projectsControlGroup">
+                <label class="control-label" id="projectsControlLabel">Выберите таблицы:</label>
                 <div class="access-toggle">
                     <button id="toggleButton" class="access-button secondary-button">Показать проекты</button>
                     <div class="list-actions">
@@ -560,8 +602,8 @@
                 <div id="namesList" class="projects-list" style="display: none;"></div>
             </div>
 
-            <div class="control-group">
-                <label class="control-label">Использовать шаблон:</label>
+            <div class="control-group" id="templateControlGroup">
+                <label class="control-label" id="templateControlLabel">Использовать шаблон:</label>
                 <select id="templateSelect" class="access-select">
                     <option value="">Выберите шаблон</option>
                     <option value="template1">Шаблон ночников</option>
@@ -593,6 +635,11 @@
                                 <option value="0">Отключить доступ</option>
                             </select>
                         </div>
+                        <div class="control-group projects-or-category">
+                            <label class="control-label">Категория (шаблон):</label>
+                            <select class="categorySelect access-select"></select>
+                            <span class="hint-text">Если не выбрана — будут использованы глобально выбранные таблицы.</span>
+                        </div>
                     </div>
                 </div>
                 <button id="addFieldButton" class="access-button secondary-button">+ Добавить поле настроек</button>
@@ -620,6 +667,13 @@
             <div class="panel-header">
                 <h3 class="panel-title">Поиск</h3>
             </div>
+
+                <div style="display:flex; gap:10px; align-items:center; justify-content:flex-start;">
+                    <label style="display:flex; align-items:center; gap:8px; font-weight:600;">
+                        <input type="checkbox" id="categorySearchToggle" class="access-checkbox">
+                        Поиск по категориям
+                    </label>
+                </div>
 
             <div class="search-controls-wrapper" style="display: flex; gap: 15px; align-items: stretch;">
                 <div class="search-section" style="flex: 1; display: flex; flex-direction: column;">
@@ -650,6 +704,99 @@
         `;
         document.body.appendChild(searchPanel);
 
+        // setup clipboard modal and button placement
+        (function setupClipboardTool(){
+            const pasteModal = document.createElement('div');
+            pasteModal.id = 'pasteModal';
+            pasteModal.style.position = 'fixed';
+            pasteModal.style.left = '50%';
+            pasteModal.style.top = '50%';
+            pasteModal.style.transform = 'translate(-50%,-50%)';
+            pasteModal.style.background = '#fff';
+            pasteModal.style.border = '1px solid #ccc';
+            pasteModal.style.padding = '12px';
+            pasteModal.style.zIndex = '10001';
+            pasteModal.style.display = 'none';
+            pasteModal.style.width = '640px';
+            pasteModal.innerHTML = `
+                <div style="font-weight:700; margin-bottom:8px;">Вставьте шаблон (пример в документации)</div>
+                <textarea id="pasteTemplateTextarea" rows="14" style="width:100%; box-sizing:border-box;"></textarea>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+                    <button id="applyPasteBtn" class="access-button success-button">Применить</button>
+                    <button id="cancelPasteBtn" class="access-button secondary-button">Отмена</button>
+                </div>`;
+            document.body.appendChild(pasteModal);
+
+            function showPasteModal(){ pasteModal.style.display = 'block'; document.getElementById('pasteTemplateTextarea').focus(); }
+            function hidePasteModal(){ pasteModal.style.display = 'none'; }
+
+            document.getElementById('cancelPasteBtn').addEventListener('click', hidePasteModal);
+            document.getElementById('applyPasteBtn').addEventListener('click', () => {
+                const text = document.getElementById('pasteTemplateTextarea').value || '';
+                try { const parsed = parseTemplateText(text); applyParsedTemplate(parsed); hidePasteModal(); }
+                catch (err) { alert('Ошибка разбора шаблона: ' + (err && err.message ? err.message : err)); }
+            });
+
+            // place button next to search panel toggle (showSearchPanelBtn)
+            setTimeout(() => {
+                const showBtn = document.getElementById('showSearchPanelBtn');
+                if (showBtn && showBtn.parentElement) {
+                    const clipBtn = document.createElement('button');
+                    clipBtn.id = 'pasteFromClipboardBtn';
+                    clipBtn.className = 'access-button secondary-button';
+                    clipBtn.style.padding = '5px 8px';
+                    clipBtn.style.fontSize = '12px';
+                    clipBtn.title = 'Вставить шаблон';
+                    clipBtn.textContent = '📋';
+                    showBtn.parentElement.insertBefore(clipBtn, showBtn.nextSibling);
+                    clipBtn.addEventListener('click', showPasteModal);
+                }
+            }, 50);
+        })();
+
+        // Управление видимостью глобального выбора таблиц (label + templateSelect)
+        function updateGlobalProjectControlsVisibility() {
+            const perSetting = document.getElementById('templatesPerSettingToggle')?.checked;
+            // Найдём конкретный label с текстом 'Выберите таблицы:'
+            const labels = panel.querySelectorAll('.control-group label.control-label');
+            labels.forEach(l => {
+                const txt = l.textContent ? l.textContent.trim() : '';
+                if (txt.startsWith('Выберите таблицы')) {
+                    l.style.display = perSetting ? 'none' : '';
+                }
+                if (txt.startsWith('Использовать шаблон')) {
+                    l.style.display = perSetting ? 'none' : '';
+                }
+            });
+            const templateSelectEl = document.getElementById('templateSelect');
+            if (templateSelectEl) templateSelectEl.style.display = perSetting ? 'none' : '';
+        }
+
+        // Обработчик добавления нового поля настроек (обновлён: заполняем категории и применяем видимость)
+
+        // Панель настроек скрипта (простой блок в основной панели)
+        const scriptSettingsBlock = document.createElement('div');
+        scriptSettingsBlock.style.marginTop = '8px';
+        scriptSettingsBlock.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="templatesPerSettingToggle" class="access-checkbox">
+                    Включать шаблоны в рамках одной настройки (пер-настройка проектов)
+                </label>
+            </div>
+        `;
+        panel.appendChild(scriptSettingsBlock);
+
+        // Инициализация видимости глобальных контролов и слушатель переключения режима
+        updateGlobalProjectControlsVisibility();
+        const tmplToggle = document.getElementById('templatesPerSettingToggle');
+        if (tmplToggle) {
+            tmplToggle.addEventListener('change', () => {
+                updateProjectsOrCategoryUI();
+                updateGlobalProjectControlsVisibility();
+            });
+        }
+
 
         const confirmButton = document.getElementById('confirmButton');
 
@@ -674,7 +821,7 @@
         const selectAllButton = document.getElementById('selectAllButton');
         const unselectAllButton = document.getElementById('unselectAllButton');
 
-        debug('Получено строк таблицы:', rows.length);
+    // debug for rows count removed for performance
 
         // список проектов
         let projectCount = 0;
@@ -693,7 +840,7 @@
                 const projectName = name.toLowerCase().replace(/\s+/g, '-');
                 const subdomain = projectName;
 
-                debug(`Проект ${projectCount}: ${name}, поддомен: ${subdomain}, ссылка: ${configLink}`);
+                // project info logging removed for performance
                 namesMap.set(name, { configLink, subdomain });
 
                 const container = document.createElement('div');
@@ -720,16 +867,23 @@
             }
         });
 
-        debug(`Всего добавлено проектов: ${projectCount}`);
+    // После построения списка проектов заполняем .categorySelect и обновляем видимость
+    fillCategorySelects();
+    updateProjectsOrCategoryUI();
+
+    // project count logged removed
 
         // Загрузка категорий проектов с GitHub
         loadProjectCategories().then(categories => {
             projectCategories = categories;
             if (categories.size > 0) {
-                debug(`Загружено категорий проектов: ${categories.size}`);
+                // categories loaded
                 populateTemplateSelect();
+                // fill category selects for existing field blocks
+                fillCategorySelects();
+                updateProjectsOrCategoryUI();
             } else {
-                debug('Не удалось загрузить категории проектов с GitHub');
+                // failed to load project categories
             }
         });
 
@@ -795,13 +949,24 @@
                         <option value="0">Отключить доступ</option>
                     </select>
                 </div>
+                <div class="control-group projects-or-category">
+                    <label class="control-label">Категория (шаблон):</label>
+                    <select class="categorySelect access-select"></select>
+                </div>
             `;
-            document.getElementById('fieldsContainer').appendChild(fieldBlock);
+
+                // Добавляем select проектов в новый блок (заполним далее)
+                document.getElementById('fieldsContainer').appendChild(fieldBlock);
+                fillCategorySelects();
+                updateProjectsOrCategoryUI();
+                updateGlobalProjectControlsVisibility();
 
             // Обработчик удаления поля
             fieldBlock.querySelector('.remove-field').addEventListener('click', () => {
                 fieldBlock.remove();
                 reorderFieldBlocks();
+                // (projectsSelect removed) обновляем category selects
+                fillCategorySelects();
             });
         });
 
@@ -817,10 +982,166 @@
             fieldCounter = blocks.length;
         }
 
+
+
+        // Заполнение .categorySelect опциями на основе projectCategories
+        function fillCategorySelects() {
+            const categories = Array.from(projectCategories.keys());
+            document.querySelectorAll('.categorySelect').forEach(sel => {
+                const current = sel.value;
+                sel.innerHTML = '';
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = '(не выбрано)';
+                sel.appendChild(emptyOpt);
+                categories.forEach(cat => {
+                    const o = document.createElement('option');
+                    o.value = cat;
+                    o.textContent = cat;
+                    if (cat === current) o.selected = true;
+                    sel.appendChild(o);
+                });
+            });
+        }
+
+        // Переключатель видимости projectsSelect / categorySelect в соответствии с toggle
+        function updateProjectsOrCategoryUI() {
+            const perSetting = document.getElementById('templatesPerSettingToggle')?.checked;
+            document.querySelectorAll('.projects-or-category').forEach(block => {
+                // покажем или спрячем весь control-group с категорией
+                block.style.display = perSetting ? '' : 'none';
+            });
+            // Скрывать/показывать глобальный список проектов
+            const namesListEl = document.getElementById('namesList');
+            const toggleButtonEl = document.getElementById('toggleButton');
+            const selectAllBtn = document.getElementById('selectAllButton');
+            const unselectAllBtn = document.getElementById('unselectAllButton');
+            if (namesListEl) {
+                if (perSetting) {
+                    namesListEl.style.display = 'none';
+                    if (toggleButtonEl) toggleButtonEl.style.display = 'none';
+                    if (selectAllBtn) selectAllBtn.style.display = 'none';
+                    if (unselectAllBtn) unselectAllBtn.style.display = 'none';
+                } else {
+                    if (toggleButtonEl) toggleButtonEl.style.display = 'inline-block';
+                    if (selectAllBtn) selectAllBtn.style.display = 'inline-block';
+                    if (unselectAllBtn) unselectAllBtn.style.display = 'inline-block';
+                    // namesList visibility controlled elsewhere (toggle button)
+                }
+            }
+
+            const projectsControlGroup = document.getElementById('projectsControlGroup');
+            const templateControlGroup = document.getElementById('templateControlGroup');
+            if (projectsControlGroup) projectsControlGroup.style.display = perSetting ? 'none' : '';
+            if (templateControlGroup) templateControlGroup.style.display = perSetting ? 'none' : '';
+        }
+
+        // слушаем переключение шаблонов в панели
+        document.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'templatesPerSettingToggle') {
+                updateProjectsOrCategoryUI();
+            }
+        });
+
         // --- НОВАЯ ЛОГИКА ДЛЯ ПОИСКА ДОСТУПОВ ОПЕРАТОРОВ ---
+
+    function parseTemplateText(text) {
+            if (!text || !text.trim()) return [];
+            const lines = text.split(/\r?\n/).map(l => l.trim());
+            const result = [];
+            let currentCategory = null;
+            let currentBlock = null;
+
+            function pushBlock() {
+                if (currentCategory && currentBlock) {
+                    let cat = result.find(r => r.category === currentCategory);
+                    if (!cat) { cat = { category: currentCategory, blocks: [] }; result.push(cat); }
+                    cat.blocks.push(currentBlock);
+                    currentBlock = null;
+                }
+            }
+
+            for (let i = 0; i < lines.length; i++) {
+                const ln = lines[i];
+                if (!ln) { pushBlock(); continue; }
+
+                // Заголовки категорий — строка должна содержать хотя бы одну букву (чтобы не принимать числовые строки за заголовки)
+                if (/.*\p{L}.*/u.test(ln) && !/[_@\.=]/.test(ln)) {
+                    pushBlock(); currentCategory = ln; currentBlock = null; continue;
+                }
+
+                const colsMatch = ln.match(/^[Кк]олонки\s*[:\-]?\s*(.*)$/);
+                if (colsMatch) {
+                    if (!currentCategory) throw new Error('Найден блок колонок до указания категории');
+                    pushBlock();
+                    currentBlock = { columns: colsMatch[1].split(/\s+/).map(Number).filter(n=>!Number.isNaN(n)), users: [] };
+                    continue;
+                }
+
+                if (/^[A-Za-z0-9_\-]+$/.test(ln)) {
+                    if (!currentCategory) throw new Error('Найден логин до указания категории');
+                    if (!currentBlock) currentBlock = { columns: [], users: [] };
+                    currentBlock.users.push(ln);
+                    continue;
+                }
+
+                // Возможно, строка — просто список цифр (колонки). Такие строки теперь явно трактуются как колонки.
+                const maybeCols = ln.split(/\s+/).map(x=>Number(x)).filter(n=>!Number.isNaN(n));
+                if (maybeCols.length) {
+                    if (!currentCategory) throw new Error('Найдены колонки до указания категории');
+                    pushBlock(); currentBlock = { columns: maybeCols, users: [] }; continue;
+                }
+            }
+
+            pushBlock();
+            return result;
+        }
+
+    function applyParsedTemplate(parsed) {
+            if (!Array.isArray(parsed) || parsed.length === 0) return;
+            const fieldsContainer = document.getElementById('fieldsContainer');
+            const existingBlocks = Array.from(document.querySelectorAll('.field-block'));
+            let blockIndex = 0;
+
+            parsed.forEach(catEntry => {
+                const category = catEntry.category;
+                catEntry.blocks.forEach(blockSpec => {
+                    let targetBlock = existingBlocks[blockIndex];
+                    if (!targetBlock) {
+                        document.getElementById('addFieldButton').click();
+                        const allBlocks = Array.from(document.querySelectorAll('.field-block'));
+                        targetBlock = allBlocks[allBlocks.length - 1];
+                    }
+
+                    const catSel = targetBlock.querySelector('.categorySelect');
+                    if (catSel) {
+                        if (!Array.from(catSel.options).some(o=>o.value === category)) {
+                            const op = document.createElement('option'); op.value = category; op.textContent = category; catSel.appendChild(op);
+                        }
+                        catSel.value = category;
+                    }
+
+                    const columnsInput = targetBlock.querySelector('.columnsInput');
+                    if (columnsInput) {
+                        if (blockSpec.columns && blockSpec.columns.length) columnsInput.value = blockSpec.columns.join(' ');
+                    }
+
+                    const usersTa = targetBlock.querySelector('.usersInput');
+                    if (usersTa) {
+                        if (blockSpec.users && blockSpec.users.length) usersTa.value = blockSpec.users.join('\n');
+                    }
+
+                    blockIndex++;
+                });
+            });
+        }
 
         // Общая функция для получения правил доступа проекта
         async function fetchProjectRules(project) {
+            const key = project.configLink || project.subdomain || project.name;
+            if (rulesCache.has(key)) {
+                return rulesCache.get(key);
+            }
             const use15Columns = document.getElementById('columnRangeToggle').checked;
             const columnMap = use15Columns ? columnMap15 : columnMap9;
 
@@ -851,14 +1172,20 @@
                                 }
                             });
                             resolve({ project, access: operatorAccess, error: null });
+                            // cache parsed rules
+                            try { rulesCache.set(key, { project, access: operatorAccess, error: null }); } catch(e){}
                         } else {
                             console.error(`Ошибка загрузки правил для ${project.name}:`, response.statusText);
-                            resolve({ project, access: new Map(), error: response.statusText });
+                            const res = { project, access: new Map(), error: response.statusText };
+                            try { rulesCache.set(key, res); } catch(e) {}
+                            resolve(res);
                         }
                     },
                     onerror: (err) => {
                         console.error(`Сетевая ошибка при загрузке правил для ${project.name}:`, err);
-                        resolve({ project, access: new Map(), error: err });
+                        const res = { project, access: new Map(), error: err };
+                        try { rulesCache.set(key, res); } catch(e) {}
+                        resolve(res);
                     }
                 });
             });
@@ -921,8 +1248,13 @@
                             <option value="0">Отключить доступ</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <label class="control-label">Проекты для этой настройки (опционально):</label>
+                        <!-- projectsSelect removed: используем categorySelect -->
+                    </div>
                 `;
                 fieldsContainer.appendChild(fieldBlock);
+                fillCategorySelects();
                 return;
             }
 
@@ -936,6 +1268,8 @@
                     "7 8 9"
                 ];
 
+                fillCategorySelects();
+                fillCategorySelects();
                 templates.forEach((template, index) => {
                     fieldCounter++;
                     const fieldBlock = document.createElement('div');
@@ -973,6 +1307,7 @@
                         fieldBlock.querySelector('.remove-field').addEventListener('click', () => {
                             fieldBlock.remove();
                             reorderFieldBlocks();
+                            fillCategorySelects();
                         });
                     }
                 });
@@ -1011,8 +1346,13 @@
                             <option value="0">Отключить доступ</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <label class="control-label">Проекты для этой настройки (опционально):</label>
+                            <!-- projectsSelect removed: используем categorySelect -->
+                    </div>
                 `;
                 fieldsContainer.appendChild(fieldBlock);
+                fillCategorySelects();
 
                 // Снимаем галочки со всех проектов
                 const checkboxes = document.querySelectorAll('#namesList input[type="checkbox"]');
@@ -1033,11 +1373,21 @@
             searchPanel.remove();
         });
 
+        // Обработчик открытия настроек скрипта (скролл к блоку настроек)
+        document.getElementById('openScriptSettingsBtn').addEventListener('click', () => {
+            const toggle = document.getElementById('templatesPerSettingToggle');
+            if (!toggle) return;
+            toggle.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // краткая подсветка
+            toggle.style.outline = '2px solid rgba(74,109,167,0.6)';
+            setTimeout(() => toggle.style.outline = '', 1600);
+        });
+
         async function findOperatorsWithAccess(projects, columns) {
             let hasErrors = false;
 
-            const allPromises = projects.map(fetchProjectRules);
-            const results = await Promise.all(allPromises);
+            // fetch rules for unique projects using cache and bounded concurrency
+            const results = await fetchRulesForProjects(projects);
 
             results.forEach(result => {
                 if (result.error) hasErrors = true;
@@ -1086,6 +1436,39 @@
             groupedOperators.forEach(operators => operators.sort());
 
             return { type: 'grouped', data: groupedOperators };
+        }
+
+        // Helper: fetch rules for an array of project objects (uses rulesCache and bounded concurrency)
+        async function fetchRulesForProjects(projects) {
+            // Normalize unique project keys to avoid duplicate fetches
+            const unique = [];
+            const seen = new Set();
+            projects.forEach(p => {
+                const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    unique.push(p);
+                }
+            });
+
+            // For those not in cache, prepare fetch tasks
+            const toFetch = [];
+            unique.forEach(p => {
+                const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
+                if (!rulesCache.has(key)) toFetch.push(p);
+            });
+
+            if (toFetch.length > 0) {
+                // run fetches with concurrency limit
+                await runWithConcurrency(toFetch.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+            }
+
+            // Collect results from cache in original unique order
+            const results = unique.map(p => {
+                const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
+                return rulesCache.get(key) || { project: p, access: new Map(), error: 'no-data' };
+            });
+            return results;
         }
 
         const showSearchPanelBtn = document.getElementById('showSearchPanelBtn');
@@ -1137,8 +1520,16 @@
 
 
             try {
-                const results = await findOperatorsWithAccess(selectedProjects, columns);
-                renderSearchResults(results);
+                const categorySearch = document.getElementById('categorySearchToggle').checked;
+
+                if (categorySearch) {
+                    // поиск по категориям: агрегируем по категориям, используя projectCategories
+                    const results = await findOperatorsWithAccessByCategory(selectedProjects, columns);
+                    renderCategorySearchResults(results);
+                } else {
+                    const results = await findOperatorsWithAccess(selectedProjects, columns);
+                    renderSearchResults(results);
+                }
             } catch (error) {
                 console.error('Ошибка при поиске операторов:', error);
                 columnSearchResultsContainer.innerHTML = '<p style="color: var(--danger-color);">Произошла ошибка. Подробности в консоли.</p>';
@@ -1147,6 +1538,178 @@
                 runOperatorSearchBtn.textContent = 'Найти';
             }
         });
+
+        // --- ПОИСК ПО КАТЕГОРИЯМ ---
+        // Агрегирует доступы операторов по категориям офферов
+        async function findOperatorsWithAccessByCategory(selectedProjects, columns) {
+            // projectCategories: Map<category, [projectNames]>
+            const use15Columns = document.getElementById('columnRangeToggle').checked;
+            const columnMap = use15Columns ? columnMap15 : columnMap9;
+
+            // Сопоставим subdomain -> project name из selectedProjects
+            const selectedBySubdomain = new Map();
+            selectedProjects.forEach(p => selectedBySubdomain.set(p.subdomain || p.name.toLowerCase().replace(/\s+/g,'-'), p));
+
+            // Для оптимизации: сначала соберём все проекты, которые участвуют хотя бы в одной выбранной категории
+            const categoryResults = new Map();
+            const categoryToMatched = new Map();
+            const allMatchedProjects = [];
+
+            for (const [category, projects] of projectCategories.entries()) {
+                const matchedProjects = [];
+                for (const projNameFragment of projects) {
+                    for (const [subdomain, proj] of selectedBySubdomain.entries()) {
+                        const pname = (proj.name || '').toLowerCase();
+                        if (pname.includes(projNameFragment.toLowerCase()) || subdomain.includes(projNameFragment.toLowerCase())) {
+                            // avoid duplicates
+                            if (!matchedProjects.some(mp => (mp.configLink || mp.name) === (proj.configLink || proj.name))) matchedProjects.push(proj);
+                        }
+                    }
+                }
+                if (matchedProjects.length) {
+                    categoryToMatched.set(category, matchedProjects);
+                    matchedProjects.forEach(mp => allMatchedProjects.push(mp));
+                }
+            }
+
+            if (allMatchedProjects.length === 0) return categoryResults;
+
+            // Уникальные проекты и единичная загрузка их правил
+            const uniqueProjects = [];
+            const seen = new Set();
+            allMatchedProjects.forEach(p => {
+                const key = p.configLink || p.subdomain || (p.name || '').toLowerCase();
+                if (!seen.has(key)) { seen.add(key); uniqueProjects.push(p); }
+            });
+
+            // загрузим правила для всех уникальных проектов (fetchRulesForProjects использует кеш)
+            const allRules = await fetchRulesForProjects(uniqueProjects);
+            const rulesByKey = new Map();
+            allRules.forEach(r => {
+                const key = (r.project && (r.project.configLink || r.project.subdomain || r.project.name)) || null;
+                if (key) rulesByKey.set(key, r);
+            });
+
+            // Теперь для каждой категории агрегируем данные, читая их из rulesByKey
+            for (const [category, matchedProjects] of categoryToMatched.entries()) {
+                const merged = new Map(); // operatorLower -> Set(columns)
+                matchedProjects.forEach(proj => {
+                    const key = proj.configLink || proj.subdomain || proj.name;
+                    const rr = rulesByKey.get(key) || rulesCache.get(key) || { access: new Map() };
+                    const { access } = rr;
+                    access.forEach((colsSet, operator) => {
+                        const op = operator.toLowerCase();
+                        if (!merged.has(op)) merged.set(op, new Set());
+                        colsSet.forEach(c => merged.get(op).add(c));
+                    });
+                });
+
+                // Фильтрация по запрошенным колонкам
+                if (columns && columns.length) {
+                    const filtered = [];
+                    merged.forEach((colsSet, op) => {
+                        if (columns.every(c => colsSet.has(c))) filtered.push(op);
+                    });
+                    categoryResults.set(category, { type: 'flat', data: filtered.sort() });
+                } else {
+                    // группировка по набору колонок
+                    const grouped = new Map();
+                    merged.forEach((colsSet, op) => {
+                        if (colsSet.size === 0) return; // пропускаем
+                        const key = [...colsSet].sort((a,b)=>a-b).join(', ');
+                        if (!grouped.has(key)) grouped.set(key, []);
+                        grouped.get(key).push(op);
+                    });
+                    grouped.forEach(arr => arr.sort());
+                    categoryResults.set(category, { type: 'grouped', data: grouped, projects: matchedProjects.map(p=>p.name || p.subdomain) });
+                }
+            }
+
+            return categoryResults; // Map category -> {type, data, projects}
+        }
+
+        // Рендер результатов поиска по категориям
+        function renderCategorySearchResults(categoryResults) {
+            const container = document.getElementById('columnSearchResultsContainer');
+            container.innerHTML = '';
+
+            if (!categoryResults || categoryResults.size === 0) {
+                container.innerHTML = '<p>По выбранным проектам категории не найдены или нет операторов.</p>';
+                return;
+            }
+
+            // Для каждой категории рисуем блок
+            for (const [category, info] of categoryResults.entries()) {
+                const safeId = makeSafeId(`cat-${category}`);
+                let html = `<div class="operator-group" style="margin-bottom:12px;">`;
+                html += `<div class="operator-group-header" style="display:flex; justify-content:space-between; align-items:center;"><strong>Категория: ${category}</strong><span style="font-size:12px;color:#6c757d;">Проектов: ${ (info.projects||[]).length }</span></div>`;
+
+                if (info.type === 'flat') {
+                    if (!info.data.length) {
+                        html += `<div style="padding-left:15px; margin-top:6px; color:#6c757d;">Операторы не найдены.</div>`;
+                    } else {
+                        html += `<div style="padding-left:10px; margin-top:6px;">`;
+                        info.data.forEach(op => {
+                            html += `<div class="operator-group-item"><input type="checkbox" class="search-result-checkbox" value="${op}" checked> <label>${op}</label></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                } else if (info.type === 'grouped') {
+                    if (!info.data || info.data.size === 0) {
+                        html += `<div style="padding-left:15px; margin-top:6px; color:#6c757d;">Операторы не найдены.</div>`;
+                    } else {
+                        const sortedGroups = new Map([...info.data.entries()].sort());
+                        html += `<div style="padding-left:10px; margin-top:6px;">`;
+                        sortedGroups.forEach((operators, groupKey) => {
+                            const gid = makeSafeId(`${safeId}-${groupKey}`);
+                            html += `<div class="operator-group">
+                                        <div class="operator-group-header" data-target="${gid}"><span>Колонки: ${groupKey} (${operators.length})</span><input type="checkbox" class="group-select-all-checkbox" title="Выбрать всю группу"></div>
+                                        <div id="${gid}" class="operator-group-content">`;
+                            operators.forEach(op => html += `<div class="operator-group-item"><input type="checkbox" class="search-result-checkbox" value="${op}"> <label>${op}</label></div>`);
+                            html += `</div></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                }
+
+                html += `</div>`;
+                container.innerHTML += html;
+            }
+
+            // Показываем контейнер
+            container.style.display = 'block';
+
+            // Добавляем панель "Применить к настройкам" (как для поиска по колонкам)
+            const applySearchContainer = document.getElementById('applySearchContainer');
+            if (applySearchContainer) {
+                if (!categoryResults || categoryResults.size === 0) {
+                    applySearchContainer.innerHTML = '';
+                    applySearchContainer.style.display = 'none';
+                } else {
+                    let applyHtml = `
+                        <label class="control-label">Применить к настройкам:</label>
+                        <div class="checkbox-container" style="flex-direction: column; align-items: flex-start; gap: 5px; padding-left: 10px;">
+                            <div class="operator-group-item">
+                                <input type="checkbox" id="apply-to-all-settings-checkbox" class="access-checkbox">
+                                <label for="apply-to-all-settings-checkbox" style="font-weight: bold;">Выбрать все</label>
+                            </div>`;
+
+                    const fieldBlocks = document.querySelectorAll('.field-block');
+                    fieldBlocks.forEach((block, index) => {
+                        const title = block.querySelector('.field-block-title').childNodes[0].nodeValue.trim();
+                        applyHtml += `
+                            <div class="operator-group-item">
+                                <input type="checkbox" class="apply-setting-checkbox access-checkbox" data-target-index="${index}" id="apply-setting-${index}">
+                                <label for="apply-setting-${index}">${title}</label>
+                            </div>`;
+                    });
+
+                    applyHtml += `</div><button id="applySelectedOperatorsBtn" class="access-button success-button" style="margin-top: 10px;">Применить выбранным</button>`;
+                    applySearchContainer.innerHTML = applyHtml;
+                    applySearchContainer.style.display = 'flex';
+                }
+            }
+        }
 
         function renderSearchResults(results) {
             const columnSearchResultsContainer = document.getElementById('columnSearchResultsContainer');
@@ -1174,7 +1737,7 @@
                 } else {
                     const sortedGroups = new Map([...results.data.entries()].sort());
                     sortedGroups.forEach((operators, groupKey) => {
-                        const groupId = `group-${groupKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                        const groupId = makeSafeId(`group-${groupKey}`);
                         const groupHtml = `
                         <div class="operator-group">
                             <div class="operator-group-header" data-target="${groupId}">
@@ -1239,37 +1802,78 @@
             }
         });
 
-        applySearchContainer.addEventListener('click', event => {
-            const target = event.target;
+        (function() {
+            const container = document.getElementById('applySearchContainer');
+            if (!container) return;
+            container.addEventListener('click', event => {
+                const target = event.target;
+                const applySearchContainer = document.getElementById('applySearchContainer');
 
-            if (target.id === 'apply-to-all-settings-checkbox') {
-                const isChecked = target.checked;
-                applySearchContainer.querySelectorAll('.apply-setting-checkbox').forEach(cb => cb.checked = isChecked);
-                return;
-            }
-
-            if (target.id === 'applySelectedOperatorsBtn') {
-                const selectedOperators = Array.from(document.getElementById('columnSearchResultsContainer').querySelectorAll('.search-result-checkbox:checked'))
-                    .map(cb => cb.value);
-
-                const selectedSettingsIndexes = Array.from(applySearchContainer.querySelectorAll('.apply-setting-checkbox:checked'))
-                    .map(cb => cb.dataset.targetIndex);
-
-                if (selectedSettingsIndexes.length === 0) {
-                    alert('Выберите хотя бы одну настройку для применения.');
+                if (target.id === 'apply-to-all-settings-checkbox') {
+                    const isChecked = target.checked;
+                    applySearchContainer.querySelectorAll('.apply-setting-checkbox').forEach(cb => cb.checked = isChecked);
                     return;
                 }
 
-                const allTextareas = document.querySelectorAll('.usersInput.access-textarea');
-                selectedSettingsIndexes.forEach(index => {
-                    if (allTextareas[index]) {
-                        allTextareas[index].value = selectedOperators.join('\n');
+                if (target.id === 'applySelectedOperatorsBtn') {
+                    // Собираем выбранных операторов: сначала из columnSearchResultsContainer, затем из operatorAccessResultsContainer
+                    const colContainer = document.getElementById('columnSearchResultsContainer');
+                    const opContainer = document.getElementById('operatorAccessResultsContainer');
+                    const fromColumn = colContainer ? Array.from(colContainer.querySelectorAll('.search-result-checkbox:checked')).map(cb => cb.value) : [];
+                    let selectedOperators = Array.from(new Set(fromColumn));
+                    if (!selectedOperators.length && opContainer) {
+                        const fromOp = Array.from(opContainer.querySelectorAll('.search-result-checkbox:checked')).map(cb => cb.value);
+                        selectedOperators = Array.from(new Set(fromOp));
                     }
-                });
+                    if (!selectedOperators.length) {
+                        alert('Выберите хотя бы одного оператора в результатах поиска для применения.');
+                        return;
+                    }
 
-                toggleSearchPanel(false);
-            }
-        });
+                    const selectedSettingsIndexes = Array.from(applySearchContainer.querySelectorAll('.apply-setting-checkbox:checked'))
+                        .map(cb => cb.dataset.targetIndex);
+
+                    if (selectedSettingsIndexes.length === 0) {
+                        alert('Выберите хотя бы одну настройку для применения.');
+                        return;
+                    }
+
+                    const uniqueSorted = Array.from(new Set(selectedOperators)).sort((a,b)=>a.localeCompare(b, undefined, {sensitivity:'base'}));
+                    const fieldBlocks = document.querySelectorAll('.field-block');
+                    selectedSettingsIndexes.forEach(idx => {
+                        const index = Number(idx);
+                        const block = fieldBlocks[index];
+                        if (block) {
+                            const ta = block.querySelector('.usersInput.access-textarea');
+                            if (ta) ta.value = uniqueSorted.join('\n');
+                        }
+                    });
+
+                    // Оставляем панель применения видимой (пользователь просил, чтобы она не исчезала)
+                    // Покажем краткое сообщение об успешном применении и не очищаем UI
+                    try {
+                        // удаляем старое сообщение, если есть
+                        const oldMsg = applySearchContainer.querySelector('.apply-status-msg');
+                        if (oldMsg) oldMsg.remove();
+                        const statusEl = document.createElement('div');
+                        statusEl.className = 'apply-status-msg';
+                        statusEl.style.color = 'var(--success-color)';
+                        statusEl.style.fontSize = '13px';
+                        statusEl.style.marginTop = '6px';
+                        statusEl.textContent = `Применено к ${selectedSettingsIndexes.length} настройкам.`;
+                        applySearchContainer.appendChild(statusEl);
+
+                        // автоматически убрать сообщение через 4 секунды, не трогая остальные элементы
+                        setTimeout(() => {
+                            const el = applySearchContainer.querySelector('.apply-status-msg');
+                            if (el) el.remove();
+                        }, 4000);
+                    } catch (e) {
+                        console.error('Не получилось показать статус применения:', e);
+                    }
+                }
+            });
+        })();
 
         document.getElementById('operatorAccessResultsContainer').addEventListener('click', event => {
             const icon = event.target.closest('.info-icon');
@@ -1393,8 +1997,16 @@
             applySearchContainer.style.display = 'none';
 
             try {
-                const results = await findAccessForOperators(selectedProjects, operatorNames);
-                renderOperatorAccessResults(results);
+                const categorySearch = document.getElementById('categorySearchToggle').checked;
+
+                if (categorySearch) {
+                    operatorAccessResultsContainer.innerHTML = 'Загрузка...';
+                    const results = await findAccessForOperatorsByCategory(selectedProjects, operatorNames);
+                    renderOperatorAccessResultsByCategory(results);
+                } else {
+                    const results = await findAccessForOperators(selectedProjects, operatorNames);
+                    renderOperatorAccessResults(results);
+                }
             } catch (error) {
                 console.error('Ошибка при поиске доступов операторов:', error);
                 operatorAccessResultsContainer.innerHTML = '<p style="color: var(--danger-color);">Произошла ошибка. Подробности в консоли.</p>';
@@ -1404,8 +2016,143 @@
             }
         });
 
+        // Поиск доступов операторов, агрегированных по категориям
+        async function findAccessForOperatorsByCategory(selectedProjects, targetOperators) {
+            // selectedProjects: [{name, configLink, maybe subdomain}]
+            // targetOperators: array of login strings
+            const operatorsLower = targetOperators.map(o => o.toLowerCase());
+
+            // Построим карту выбранных проектов по поддомену/имени для быстрого поиска
+            const selectedMap = new Map();
+            selectedProjects.forEach(p => {
+                const key = (p.subdomain || (p.name || '')).toLowerCase();
+                selectedMap.set(key, p);
+            });
+
+            // Для каждой категории возьмём проекты, которые пересекаются с выбранными
+            const result = new Map(); // category -> Map(operatorLower -> { foundIn: Map(project->Set(cols)), notFoundIn:Set })
+
+            // Сначала соберём все проекты, которые участвуют хотя бы в одной выбранной категории
+            const categoryToMatched = new Map();
+            const allMatched = [];
+            for (const [category, projects] of projectCategories.entries()) {
+                const matched = [];
+                for (const frag of projects) {
+                    for (const [key, p] of selectedMap.entries()) {
+                        if (key.includes(frag.toLowerCase()) || (p.name || '').toLowerCase().includes(frag.toLowerCase())) {
+                            if (!matched.some(mp => (mp.configLink || mp.name) === (p.configLink || p.name))) matched.push(p);
+                        }
+                    }
+                }
+                if (matched.length) {
+                    categoryToMatched.set(category, matched);
+                    matched.forEach(m => allMatched.push(m));
+                }
+            }
+
+            if (allMatched.length === 0) return result;
+
+            // Уникальные проекты — загрузим их правила единожды
+            const unique = [];
+            const seen = new Set();
+            allMatched.forEach(p => {
+                const key = p.configLink || p.subdomain || p.name;
+                if (!seen.has(key)) { seen.add(key); unique.push(p); }
+            });
+
+            const allRules = await fetchRulesForProjects(unique);
+            const rulesByKey = new Map();
+            allRules.forEach(r => {
+                const key = r.project && (r.project.configLink || r.project.subdomain || r.project.name);
+                if (key) rulesByKey.set(key, r);
+            });
+
+            // Теперь для каждой категории собираем информацию по операторам из правил
+            for (const [category, matched] of categoryToMatched.entries()) {
+                const mapForCategory = new Map();
+                operatorsLower.forEach(op => mapForCategory.set(op, { name: op, foundIn: new Map(), notFoundIn: new Set() }));
+
+                matched.forEach(project => {
+                    const key = project.configLink || project.subdomain || project.name;
+                    const rr = rulesByKey.get(key) || rulesCache.get(key) || { access: new Map() };
+                    const { access } = rr;
+                    operatorsLower.forEach(opLower => {
+                        if (access.has(opLower)) {
+                            const cols = access.get(opLower);
+                            if (cols && cols.size > 0) {
+                                mapForCategory.get(opLower).foundIn.set(project.name || project.subdomain || key, cols);
+                            }
+                        } else {
+                            mapForCategory.get(opLower).notFoundIn.add(project.name || project.subdomain || key);
+                        }
+                    });
+                });
+
+                result.set(category, mapForCategory);
+            }
+
+            return result; // Map category -> Map(operatorLower -> {name, foundIn, notFoundIn})
+        }
+
+        // Рендер результатов поиска операторов по категориям (для введённых логинов)
+        function renderOperatorAccessResultsByCategory(categoryResults) {
+            const container = document.getElementById('operatorAccessResultsContainer');
+            container.innerHTML = '';
+
+            if (!categoryResults || categoryResults.size === 0) {
+                container.innerHTML = '<p>Операторы не найдены в выбранных категориях.</p>';
+                return;
+            }
+
+            let html = '';
+            for (const [category, mapForCategory] of categoryResults.entries()) {
+                html += `<div class="operator-group" style="padding:10px; border-radius:6px; background:#eef5ff; margin-bottom:10px;">`;
+                html += `<div style="font-weight:700; margin-bottom:8px;">Категория: ${category}</div>`;
+
+                // mapForCategory: Map(opLower -> {name, foundIn, notFoundIn})
+                for (const [opLower, info] of mapForCategory.entries()) {
+                    html += `<div style="padding:8px; background:#fff; border-radius:6px; margin-bottom:8px;">`;
+                    html += `<div style="font-weight:600; display:flex; align-items:center; gap:8px;"><span>Оператор: ${info.name}</span></div>`;
+
+                    if (info.notFoundIn.size > 0) {
+                        html += `<div style="color:#6c757d; font-size:13px; margin-top:4px;">Не найден в проектах: ${[...info.notFoundIn].sort().join(', ')}</div>`;
+                    }
+
+                    if (info.foundIn.size === 0) {
+                        html += `<div style="padding-left:10px; color:#6c757d; margin-top:6px;">Нет доступов в проектах категории.</div>`;
+                    } else {
+                        const sorted = new Map([...info.foundIn.entries()].sort());
+                        sorted.forEach((colsSet, projectName) => {
+                            const cols = [...colsSet].sort((a,b)=>a-b).join(', ');
+                            html += `<div style="padding-left:12px; margin-top:6px;">${projectName}: <strong>${cols}</strong></div>`;
+                        });
+                    }
+
+                    html += `</div>`;
+                }
+
+                html += `</div>`;
+            }
+
+            container.innerHTML = html;
+            container.style.display = 'block';
+
+            // При показе результатов по логинам/категориям панель применения настроек не используется
+            const applySearchContainer = document.getElementById('applySearchContainer');
+            if (applySearchContainer) {
+                applySearchContainer.innerHTML = '';
+                applySearchContainer.style.display = 'none';
+            }
+        }
+
+        // NOTE: обработчик кнопки просмотра подключений категорий удалён — функционал объединён с поиском по категориям
+
 
         async function getActiveOperators(subdomain, water) {
+            if (operatorsCache && operatorsCache[subdomain]) {
+                return operatorsCache[subdomain];
+            }
+
             return new Promise((resolve, reject) => {
                 const url = `https://${subdomain}.leadvertex.ru/api/admin/getActiveOperators.html?token=${water}`;
                 GM_xmlhttpRequest({
@@ -1415,6 +2162,7 @@
                         if (response.status === 200) {
                             try {
                                 const data = JSON.parse(response.responseText);
+                                operatorsCache[subdomain] = data;
                                 resolve(data);
                             } catch (e) {
                                 reject(new Error(`Ошибка парсинга ответа сервера: ${e.message}`));
@@ -1567,6 +2315,35 @@
                     };
                 });
 
+                // Если включена опция per-setting templates, соберём проекты для каждой настройки отдельно
+                const templatesPerSetting = document.getElementById('templatesPerSettingToggle')?.checked;
+                const perBlockProjects = [];
+                if (templatesPerSetting) {
+                    // Build per-block projects: prefer selected category -> projects from projectCategories
+                    Array.from(fieldBlocks).forEach(block => {
+                        const catSel = block.querySelector('.categorySelect');
+                        if (catSel && catSel.value) {
+                            const cat = catSel.value;
+                            const fragments = projectCategories.get(cat) || [];
+                            const matched = [];
+                            // find matching projects from namesList by fragment match
+                            document.querySelectorAll('#namesList .project-item').forEach(item => {
+                                const cb = item.querySelector('input[type="checkbox"]');
+                                const label = item.querySelector('.project-name');
+                                if (!cb || !label) return;
+                                const pname = label.textContent.trim().toLowerCase();
+                                const sub = cb.value;
+                                if (fragments.some(f => pname.includes(f.toLowerCase()) || sub.includes(f.toLowerCase()))) {
+                                    matched.push({ subdomain: sub, name: label.textContent.trim() });
+                                }
+                            });
+                            perBlockProjects.push(matched);
+                        } else {
+                            perBlockProjects.push([]);
+                        }
+                    });
+                }
+
                 if (blocksData.some(data => !data.columns.length || !data.users.length)) {
                     alert("Заполните все поля колонок и операторов.");
                     return;
@@ -1580,70 +2357,85 @@
                 const tasks = [];
                 const operatorsByDomain = {};
 
-                for (const project of selectedProjects) {
-                    try {
-                        const { subdomain } = project;
-                        operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
-                    } catch (error) {
-                        console.error(`Ошибка получения операторов для ${project.subdomain}:`, error);
-                        operatorsByDomain[subdomain] = null; // Помечаем, что проект недоступен
-                    }
+                // Соберём список всех уникальных проектов, по которым нужно работать
+                const allProjectsToFetch = new Map(); // subdomain -> {subdomain, name}
+                if (templatesPerSetting) {
+                    perBlockProjects.forEach(arr => {
+                        arr.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                    });
                 }
+                // всегда добавляем глобально выбранные проекты на случай, если некоторые блоки не выбрали проекты
+                selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
 
-                for (const project of selectedProjects) {
-                    const { subdomain, name } = project;
-                    const operators = operatorsByDomain[subdomain];
-                    if (!operators) continue; // Пропускаем проекты, где не удалось получить операторов
+                // Получаем операторов для всех используемых доменов (параллельно, с лимитом)
+                const fetchFns = Array.from(allProjectsToFetch.values()).map(project => {
+                    return async () => {
+                        const subdomain = project.subdomain;
+                        try {
+                            operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
+                        } catch (error) {
+                            console.error(`Ошибка получения операторов для ${subdomain}:`, error);
+                            operatorsByDomain[subdomain] = null;
+                        }
+                    };
+                });
 
-                    for (const blockData of blocksData) {
-                        const { columns, users, action } = blockData;
+                await runWithConcurrency(fetchFns, CONCURRENT_LIMIT);
 
-                        let operatorIds = [];
-                        if (users.includes("all")) {
-                            operatorIds = Object.keys(operators);
-                        } else {
+                // Построим задачи: для каждой настройки — по её списку проектов (или по глобальным, если список пуст)
+                for (let i = 0; i < blocksData.length; i++) {
+                    const blockData = blocksData[i];
+                    const { columns, users, action } = blockData;
+                    const projectsForBlock = (templatesPerSetting && perBlockProjects[i] && perBlockProjects[i].length) ? perBlockProjects[i] : selectedProjects;
+
+                        for (const project of projectsForBlock) {
+                            const { subdomain, name } = project;
+                            const operators = operatorsByDomain[subdomain];
+                            if (!operators) continue;
+
+                            const loginToIds = {};
                             for (const [id, login] of Object.entries(operators)) {
-                                if (users.some(user => user.toLowerCase() === login.toLowerCase())) {
-                                    operatorIds.push(id);
+                                const key = (login || '').toLowerCase();
+                                if (!loginToIds[key]) loginToIds[key] = [];
+                                loginToIds[key].push(id);
+                            }
+
+                            let operatorIds = [];
+                            if (users.includes("all")) {
+                                operatorIds = Object.keys(operators);
+                            } else {
+                                for (const user of users) {
+                                    const key = user.toLowerCase();
+                                    if (loginToIds[key]) operatorIds.push(...loginToIds[key]);
+                                }
+                            }
+
+                            // Дедуп и push задач
+                            const uniqueOpIds = Array.from(new Set(operatorIds));
+                            for (const operatorId of uniqueOpIds) {
+                                const operatorLogin = operators[operatorId];
+                                for (const column of columns) {
+                                    const { group, type } = columnMap[column];
+                                    tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
+                                        console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
+                                    }));
                                 }
                             }
                         }
-
-                        for (const operatorId of operatorIds) {
-                            const operatorLogin = operators[operatorId];
-                            for (const column of columns) {
-                                const { group, type } = columnMap[column];
-                                tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
-                                    console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
-                                }));
-                            }
-                        }
-                    }
                 }
 
                 const totalOperations = tasks.length;
                 let completedOperations = 0;
                 updateProgress(0, totalOperations);
 
-                //воркеры
-                const runWorker = async () => {
-                    while (tasks.length > 0) {
-                        const task = tasks.shift();
-                        if (task) {
-                            await task();
-                            completedOperations++;
-                            updateProgress(completedOperations, totalOperations);
-                        }
-                    }
-                };
+                // Выполним задачи с ограниченным параллелизмом и обновлением прогресса
+                const wrappedTasks = tasks.map(fn => async () => {
+                    await fn();
+                    completedOperations++;
+                    updateProgress(completedOperations, totalOperations);
+                });
 
-                //Запуск пула воркеров
-                const workers = [];
-                for (let i = 0; i < CONCURRENT_LIMIT; i++) {
-                    workers.push(runWorker());
-                }
-
-                await Promise.all(workers);
+                await runWithConcurrency(wrappedTasks, CONCURRENT_LIMIT);
 
                 // Все задачи выполнены
                 confirmButton.disabled = false;
