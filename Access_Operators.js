@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.7.0
+// @version      2.8.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -521,17 +521,14 @@
     `);
 
     function makeSafeId(str) {
-        if (!str) return '';
+        if (!str) return 'id-empty';
         try {
-            // base64url: кодирование Unicode (btoa(unescape(encodeURIComponent(str))))
             const utf8 = encodeURIComponent(str);
-            // unescape устарел, но здесь допустим для получения бинарной строки для btoa
             const binary = unescape(utf8);
             const b64 = btoa(binary);
             const b64url = b64.replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
             return `id-${b64url}`;
         } catch (e) {
-            // запасной вариант: заменить неалфавитно-цифровые символы на '-'
             return `id-${str.replace(/[^a-zA-Z0-9]+/g, '-')}`;
         }
     }
@@ -1474,8 +1471,7 @@
         async function findOperatorsWithAccess(projects, columns) {
             let hasErrors = false;
 
-            // загрузить правила для уникальных проектов с использованием кеша и ограниченной параллельности
-            const results = await fetchRulesForProjects(projects);
+            const results = await runWithConcurrency(projects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
 
             results.forEach(result => {
                 if (result.error) hasErrors = true;
@@ -1496,7 +1492,6 @@
                 });
             });
 
-            // заданы колонки для фильтрации
             if (columns.length > 0) {
                 const filteredOperators = [];
                 mergedOperatorAccess.forEach(({ name, columns: accessibleColumns }) => {
@@ -1507,7 +1502,6 @@
                 return { type: 'flat', data: filteredOperators.sort() };
             }
 
-            // не заданы - группируем
             const groupedOperators = new Map();
             mergedOperatorAccess.forEach(({ name, columns: accessibleColumns }) => {
                 if (accessibleColumns.size > 0) {
@@ -1520,7 +1514,6 @@
                 }
             });
 
-             // сортировка операторов внутри каждой группы
             groupedOperators.forEach(operators => operators.sort());
 
             return { type: 'grouped', data: groupedOperators };
@@ -1579,6 +1572,7 @@
         });
 
         runOperatorSearchBtn.addEventListener('click', async () => {
+            try { rulesCache && rulesCache.clear && rulesCache.clear(); } catch (e) { }
             const columnsInput = document.getElementById('searchColumnsInput').value.trim();
             const columns = columnsInput ? columnsInput.split(' ').map(Number).filter(n => n > 0) : [];
 
@@ -1669,21 +1663,12 @@
                 if (!seen.has(key)) { seen.add(key); uniqueProjects.push(p); }
             });
 
-            // загрузим правила для всех уникальных проектов (fetchRulesForProjects использует кеш)
-            const allRules = await fetchRulesForProjects(uniqueProjects);
-            const rulesByKey = new Map();
-            allRules.forEach(r => {
-                const key = (r.project && (r.project.configLink || r.project.subdomain || r.project.name)) || null;
-                if (key) rulesByKey.set(key, r);
-            });
-
-            // Теперь для каждой категории агрегируем данные, читая их из rulesByKey
+            // Для каждой категории загружаем правила проектов динамически (чтобы видеть актуальные изменения)
             for (const [category, matchedProjects] of categoryToMatched.entries()) {
                 const merged = new Map(); // operatorLower -> Set(columns)
-                matchedProjects.forEach(proj => {
-                    const key = proj.configLink || proj.subdomain || proj.name;
-                    const rr = rulesByKey.get(key) || rulesCache.get(key) || { access: new Map() };
-                    const { access } = rr;
+                // Получаем правила для проектов категории сейчас
+                const rulesResults = await runWithConcurrency(matchedProjects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+                rulesResults.forEach(({ access }) => {
                     access.forEach((colsSet, operator) => {
                         const op = operator.toLowerCase();
                         if (!merged.has(op)) merged.set(op, new Set());
@@ -1878,7 +1863,9 @@
         document.getElementById('columnSearchResultsContainer').addEventListener('click', event => {
             const header = event.target.closest('.operator-group-header');
             if (header && !event.target.classList.contains('group-select-all-checkbox')) {
-                const content = document.getElementById(header.dataset.target);
+                const targetId = header.dataset.target;
+                if (!targetId) return;
+                const content = document.getElementById(targetId);
                 if (content) content.classList.toggle('visible');
             }
 
@@ -1966,6 +1953,7 @@
             const icon = event.target.closest('.info-icon');
             if (icon) {
                 const targetId = icon.dataset.targetId;
+                if (!targetId) return;
                 const detailsElement = document.getElementById(targetId);
                 if (detailsElement) {
                     detailsElement.style.display = detailsElement.style.display === 'none' ? 'block' : 'none';
@@ -2052,6 +2040,7 @@
         }
 
         document.getElementById('runOperatorAccessSearchBtn').addEventListener('click', async (e) => {
+            try { rulesCache && rulesCache.clear && rulesCache.clear(); } catch (err) { }
             const button = e.target;
             const operatorNames = document.getElementById('operatorAccessSearchTextarea').value.trim().split('\n').filter(Boolean).map(s => s.trim());
 
@@ -2139,32 +2128,22 @@
 
             if (allMatched.length === 0) return result;
 
-            // Уникальные проекты — загрузим их правила единожды
-            const unique = [];
-            const seen = new Set();
-            allMatched.forEach(p => {
-                const key = p.configLink || p.subdomain || p.name;
-                if (!seen.has(key)) { seen.add(key); unique.push(p); }
-            });
-
-            const allRules = await fetchRulesForProjects(unique);
-            const rulesByKey = new Map();
-            allRules.forEach(r => {
-                const key = r.project && (r.project.configLink || r.project.subdomain || r.project.name);
-                if (key) rulesByKey.set(key, r);
-            });
-
-            // Теперь для каждой категории собираем информацию по операторам из правил
+            // Для каждой категории загружаем правила проектов динамически (чтобы видеть актуальные изменения)
             for (const [category, matched] of categoryToMatched.entries()) {
                 const mapForCategory = new Map();
                 operatorsLower.forEach(op => mapForCategory.set(op, { name: op, foundIn: new Map(), notFoundIn: new Set() }));
 
-                matched.forEach(project => {
+                // Получаем правила текущих проектов категории
+                const rulesResults = await runWithConcurrency(matched.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+
+                // Пробегаем результаты и наполняем структуру
+                for (let i = 0; i < matched.length; i++) {
+                    const project = matched[i];
                     const key = project.configLink || project.subdomain || project.name;
-                    const rr = rulesByKey.get(key) || rulesCache.get(key) || { access: new Map() };
+                    const rr = rulesResults[i] || rulesCache.get(key) || { access: new Map() };
                     const { access } = rr;
                     operatorsLower.forEach(opLower => {
-                        if (access.has(opLower)) {
+                        if (access && access.has(opLower)) {
                             const cols = access.get(opLower);
                             if (cols && cols.size > 0) {
                                 mapForCategory.get(opLower).foundIn.set(project.name || project.subdomain || key, cols);
@@ -2173,7 +2152,7 @@
                             mapForCategory.get(opLower).notFoundIn.add(project.name || project.subdomain || key);
                         }
                     });
-                });
+                }
 
                 result.set(category, mapForCategory);
             }
@@ -2412,31 +2391,43 @@
                     };
                 });
 
-                // Если включена опция per-setting templates, соберём проекты для каждой настройки отдельно
                 const templatesPerSetting = document.getElementById('templatesPerSettingToggle')?.checked;
                 const perBlockProjects = [];
+
                 if (templatesPerSetting) {
-                    // Построить проекты для каждого блока: предпочитать выбранную категорию -> проекты из projectCategories
                     Array.from(fieldBlocks).forEach(block => {
                         const catSel = block.querySelector('.categorySelect');
+
                         if (catSel && catSel.value) {
                             const cat = catSel.value;
-                            const fragments = projectCategories.get(cat) || [];
+                            let fragments = projectCategories.get(cat) || [];
+
+                            if (fragments.length === 0) {
+                                fragments = [cat];
+                            }
+
                             const matched = [];
-                            // найти соответствующие проекты в namesList по фрагментам
-                            document.querySelectorAll('#namesList .project-item').forEach(item => {
+                            const allProjectItems = document.querySelectorAll('#namesList .project-item');
+
+                            allProjectItems.forEach(item => {
                                 const cb = item.querySelector('input[type="checkbox"]');
                                 const label = item.querySelector('.project-name');
                                 if (!cb || !label) return;
                                 const pname = label.textContent.trim().toLowerCase();
-                                const sub = cb.value;
-                                if (fragments.some(f => pname.includes(f.toLowerCase()) || sub.includes(f.toLowerCase()))) {
-                                    matched.push({ subdomain: sub, name: label.textContent.trim() });
+                                const sub = cb.value.toLowerCase();
+                                const isMatch = fragments.some(f => {
+                                    const fLower = f.toLowerCase();
+                                    return pname.includes(fLower) || sub.includes(fLower);
+                                });
+
+                                if (isMatch) {
+                                    matched.push({ subdomain: cb.value, name: label.textContent.trim() });
                                 }
                             });
-                            perBlockProjects.push(matched);
+
+                            perBlockProjects.push({ projects: matched, hasCategory: true });
                         } else {
-                            perBlockProjects.push([]);
+                            perBlockProjects.push({ projects: [], hasCategory: false });
                         }
                     });
                 }
@@ -2457,12 +2448,19 @@
                 // Соберём список всех уникальных проектов, по которым нужно работать
                 const allProjectsToFetch = new Map(); // subdomain -> {subdomain, name}
                 if (templatesPerSetting) {
-                    perBlockProjects.forEach(arr => {
-                        arr.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                    perBlockProjects.forEach(blockInfo => {
+                        if (blockInfo.hasCategory) {
+                            // Используем только проекты категории
+                            blockInfo.projects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                        } else {
+                            // Нет категории — используем глобальные выбранные проекты
+                            selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                        }
                     });
+                } else {
+                    // Без per-setting mode — всегда глобальные selectedProjects
+                    selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
                 }
-                // всегда добавляем глобально выбранные проекты на случай, если некоторые блоки не выбрали проекты
-                selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
 
                 // Получаем операторов для всех используемых доменов (параллельно, с лимитом)
                 const fetchFns = Array.from(allProjectsToFetch.values()).map(project => {
@@ -2483,7 +2481,16 @@
                 for (let i = 0; i < blocksData.length; i++) {
                     const blockData = blocksData[i];
                     const { columns, users, action } = blockData;
-                    const projectsForBlock = (templatesPerSetting && perBlockProjects[i] && perBlockProjects[i].length) ? perBlockProjects[i] : selectedProjects;
+
+                    let projectsForBlock = selectedProjects;
+                    if (templatesPerSetting && perBlockProjects[i]) {
+                        if (perBlockProjects[i].hasCategory) {
+                            projectsForBlock = perBlockProjects[i].projects;
+                            if (projectsForBlock.length === 0) {
+                                continue;
+                            }
+                        }
+                    }
 
                         for (const project of projectsForBlock) {
                             const { subdomain, name } = project;
