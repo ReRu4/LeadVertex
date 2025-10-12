@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.8.0
+// @version      2.9.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -1135,50 +1135,88 @@
             const lines = text.split(/\r?\n/).map(l => l.trim());
             const result = [];
             let currentCategory = null;
-            let currentBlock = null;
+            let currentColorGroup = null; // Зеленых, Желтых, Красных
+            let currentColumns = [];
+            let currentUsers = [];
 
             function pushBlock() {
-                if (currentCategory && currentBlock) {
+                if (currentCategory && currentUsers.length > 0) {
                     let cat = result.find(r => r.category === currentCategory);
-                    if (!cat) { cat = { category: currentCategory, blocks: [] }; result.push(cat); }
-                    cat.blocks.push(currentBlock);
-                    currentBlock = null;
+                    if (!cat) {
+                        cat = { category: currentCategory, blocks: [] };
+                        result.push(cat);
+                    }
+                    cat.blocks.push({
+                        columns: currentColumns.slice(),
+                        users: currentUsers.slice(),
+                        colorGroup: currentColorGroup
+                    });
+                    currentColumns = [];
+                    currentUsers = [];
+                    currentColorGroup = null;
                 }
             }
 
             for (let i = 0; i < lines.length; i++) {
                 const ln = lines[i];
-                if (!ln) { pushBlock(); continue; }
 
-                // Категория: строка с буквой
-                if (/.*\p{L}.*/u.test(ln) && !/[_@\.=]/.test(ln)) {
-                    pushBlock(); currentCategory = ln; currentBlock = null; continue;
-                }
+                // Пропускаем пустые строки
+                if (!ln) continue;
 
-                const colsMatch = ln.match(/^[Кк]олонки\s*[:\-]?\s*(.*)$/);
-                if (colsMatch) {
-                    if (!currentCategory) throw new Error('Найден блок колонок до указания категории');
+                // Проверяем, является ли строка цветовой группой
+                const colorMatch = ln.match(/^(Зеленых|Желтых|Красных|Зеленые|Желтые|Красные)$/i);
+                if (colorMatch) {
                     pushBlock();
-                    currentBlock = { columns: colsMatch[1].split(/\s+/).map(Number).filter(n=>!Number.isNaN(n)), users: [] };
+                    currentColorGroup = colorMatch[1];
+                    currentColumns = [];
+                    currentUsers = [];
                     continue;
                 }
 
-                if (/^[A-Za-z0-9_\-]+$/.test(ln)) {
-                    if (!currentCategory) throw new Error('Найден логин до указания категории');
-                    if (!currentBlock) currentBlock = { columns: [], users: [] };
-                    currentBlock.users.push(ln);
+                // Проверяем, является ли строка логином оператора (латинские буквы, цифры, подчеркивания)
+                if (/^[A-Za-z0-9_\-аАеЕ]+$/.test(ln) && !/^\d+$/.test(ln)) {
+                    if (!currentCategory) {
+                        // Если нет категории, эта строка — название категории
+                        pushBlock();
+                        currentCategory = ln;
+                        currentColorGroup = null;
+                        currentColumns = [];
+                        currentUsers = [];
+                    } else {
+                        // Это логин оператора
+                        currentUsers.push(ln);
+                    }
                     continue;
                 }
 
-                // Чисто цифровая строка — колонки
-                const maybeCols = ln.split(/\s+/).map(x=>Number(x)).filter(n=>!Number.isNaN(n));
-                if (maybeCols.length) {
-                    if (!currentCategory) throw new Error('Найдены колонки до указания категории');
-                    pushBlock(); currentBlock = { columns: maybeCols, users: [] }; continue;
+                // Проверяем, является ли строка колонками (только цифры и пробелы)
+                const maybeCols = ln.split(/\s+/).map(x => x.trim()).filter(x => x !== '').map(x => Number(x)).filter(n => !Number.isNaN(n));
+                if (maybeCols.length > 0 && /^[\d\s]+$/.test(ln)) {
+                    if (!currentCategory) {
+                        throw new Error('Найдены колонки до указания категории проекта');
+                    }
+                    // Если уже есть логины, значит колонки относятся к предыдущему блоку
+                    if (currentUsers.length > 0) {
+                        pushBlock();
+                    }
+                    currentColumns = maybeCols;
+                    continue;
+                }
+
+                // Если строка содержит кириллицу и не цветовая группа - это категория проекта
+                if (/[а-яА-ЯёЁ]/.test(ln) && !colorMatch) {
+                    pushBlock();
+                    currentCategory = ln;
+                    currentColorGroup = null;
+                    currentColumns = [];
+                    currentUsers = [];
+                    continue;
                 }
             }
 
+            // Пушим последний блок
             pushBlock();
+
             return result;
         }
 
@@ -1196,6 +1234,13 @@
                         document.getElementById('addFieldButton').click();
                         const allBlocks = Array.from(document.querySelectorAll('.field-block'));
                         targetBlock = allBlocks[allBlocks.length - 1];
+                        existingBlocks.push(targetBlock);
+                    }
+
+                    // Обновляем заголовок блока с информацией о цветовой группе
+                    const blockTitle = targetBlock.querySelector('.field-block-title');
+                    if (blockTitle && blockSpec.colorGroup) {
+                        blockTitle.textContent = `${category} - ${blockSpec.colorGroup}`;
                     }
 
                     const catSel = targetBlock.querySelector('.categorySelect');
@@ -1208,12 +1253,20 @@
 
                     const columnsInput = targetBlock.querySelector('.columnsInput');
                     if (columnsInput) {
-                        if (blockSpec.columns && blockSpec.columns.length) columnsInput.value = blockSpec.columns.join(' ');
+                        if (blockSpec.columns && blockSpec.columns.length) {
+                            columnsInput.value = blockSpec.columns.join(' ');
+                        } else {
+                            columnsInput.value = '';
+                        }
                     }
 
                     const usersTa = targetBlock.querySelector('.usersInput');
                     if (usersTa) {
-                        if (blockSpec.users && blockSpec.users.length) usersTa.value = blockSpec.users.join('\n');
+                        if (blockSpec.users && blockSpec.users.length) {
+                            usersTa.value = blockSpec.users.join('\n');
+                        } else {
+                            usersTa.value = '';
+                        }
                     }
 
                     blockIndex++;
