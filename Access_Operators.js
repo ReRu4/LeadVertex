@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.9.0
+// @version      2.9.1
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -51,7 +51,7 @@
         }
     });
 
-    // логирование с временной меткой
+    // Логирование с временной меткой
     const debug = (message, data) => {
         const timestamp = new Date().toLocaleTimeString();
         if (data) {
@@ -63,7 +63,7 @@
 
     debug('Инициализация скрипта');
 
-    // Функция для загрузки и парсинга данных проектов с GitHub
+    // Загрузка данных проектов с GitHub
     async function loadProjectCategories() {
         const url = 'https://raw.githubusercontent.com/ReRu4/LeadVertex/refs/heads/main/projects.md';
 
@@ -93,7 +93,7 @@
         });
     }
 
-    // Функция для парсинга табличных данных проектов
+    // Парсинг табличных данных проектов
     function parseProjectData(data) {
         const lines = data.split('\n');
         const categories = new Map();
@@ -105,7 +105,6 @@
                 const category = parts[0];
                 const project = parts[1];
 
-                // Пропускаем строки с "--" и пустые проекты
                 if (category && project && category !== '--' && !category.includes('--')) {
                     if (!categories.has(category)) {
                         categories.set(category, []);
@@ -150,13 +149,11 @@
         9: { group: "5", type: "2" },
     };
 
-    // Глобальная переменная для хранения категорий проектов
     let projectCategories = new Map();
     let operatorsCache = {};
     const rulesCache = new Map();
 
-
-    // стили в head
+    // Добавление глобальных стилей
     const addGlobalStyle = (css) => {
         const head = document.getElementsByTagName('head')[0];
         if (!head) return;
@@ -166,7 +163,6 @@
         head.appendChild(style);
     };
 
-    //  глобальные стили
     addGlobalStyle(`
         :root {
             --primary-color: #4a6da7;
@@ -555,7 +551,6 @@
     }
 
     if (location.href.includes("settings.html")) {
-        // панель настроек доступа
         const panel = document.createElement('div');
         panel.className = 'access-panel';
         panel.innerHTML = `
@@ -699,7 +694,7 @@
         `;
         document.body.appendChild(searchPanel);
 
-    // Настройка модалки вставки и размещение кнопки
+    // Модальное окно для вставки шаблона
         (function setupClipboardTool(){
             const pasteModal = document.createElement('div');
             pasteModal.id = 'pasteModal';
@@ -732,7 +727,6 @@
                 catch (err) { alert('Ошибка разбора шаблона: ' + (err && err.message ? err.message : err)); }
             });
 
-            // Разместить кнопку рядом с переключателем панели поиска (showSearchPanelBtn)
             setTimeout(() => {
                 const showBtn = document.getElementById('showSearchPanelBtn');
                 if (showBtn && showBtn.parentElement) {
@@ -749,10 +743,9 @@
             }, 50);
         })();
 
-        // Управление видимостью глобального выбора таблиц (label + templateSelect)
+        // Управление видимостью глобальных контролов
         function updateGlobalProjectControlsVisibility() {
             const perSetting = document.getElementById('templatesPerSettingToggle')?.checked;
-            // Найдём конкретный label с текстом 'Выберите таблицы:'
             const labels = panel.querySelectorAll('.control-group label.control-label');
             labels.forEach(l => {
                 const txt = l.textContent ? l.textContent.trim() : '';
@@ -767,9 +760,6 @@
             if (templateSelectEl) templateSelectEl.style.display = perSetting ? 'none' : '';
         }
 
-        // Обработчик добавления нового поля настроек (обновлён: заполняем категории и применяем видимость)
-
-        // Скрытый блок настроек: чекбокс хранится в DOM, но управление отображением — через отдельное окно
         const scriptSettingsBlock = document.createElement('div');
         scriptSettingsBlock.style.marginTop = '8px';
         scriptSettingsBlock.style.display = 'none';
@@ -783,8 +773,6 @@
         `;
         panel.appendChild(scriptSettingsBlock);
 
-        // Инициализация видимости глобальных контролов и слушатель переключения режима
-        // Применяем сохранённое значение из localStorage (если есть)
         const savedTemplatesPerSetting = localStorage.getItem('proZvon_templatesPerSetting');
         if (savedTemplatesPerSetting !== null) {
             const saved = savedTemplatesPerSetting === '1';
@@ -800,9 +788,8 @@
             });
         }
 
-        // Открыть модальное окно настроек внутри страницы
+        // Открытие модального окна настроек
         document.getElementById('openScriptSettingsBtn').addEventListener('click', () => {
-            // Создаём оверлей и модалку один раз
             let overlay = document.getElementById('settingsOverlay');
             let modal = document.getElementById('settingsModal');
             if (!overlay) {
@@ -853,15 +840,12 @@
                     const checked = ev.target.checked;
                     const hiddenToggle = document.getElementById('templatesPerSettingToggle');
                     if (hiddenToggle) hiddenToggle.checked = checked;
-                    // сохраняем
                     localStorage.setItem('proZvon_templatesPerSetting', checked ? '1' : '0');
-                    // применяем изменения
                     updateProjectsOrCategoryUI();
                     updateGlobalProjectControlsVisibility();
                 });
             }
 
-            // показать модалку
             function showSettingsModal() {
                 const modalEl = document.getElementById('settingsModal');
                 const overlayEl = document.getElementById('settingsOverlay');
@@ -891,14 +875,12 @@
             confirmButton.textContent = 'Параметры не заданы';
         }
 
-        // Обработчик закрытия панели
         document.getElementById('closeButton').addEventListener('click', () => {
             panel.remove();
             searchPanel.remove();
             if (observer) observer.disconnect();
         });
 
-        // проекты
         const rows = document.querySelectorAll("tr");
         const namesMap = new Map();
         const namesList = document.getElementById('namesList');
@@ -906,9 +888,6 @@
         const selectAllButton = document.getElementById('selectAllButton');
         const unselectAllButton = document.getElementById('unselectAllButton');
 
-    // debug for rows count removed for performance
-
-        // список проектов
         let projectCount = 0;
         rows.forEach(row => {
             const nameElement = row.querySelector('td:nth-child(2) a');
@@ -952,35 +931,25 @@
             }
         });
 
-    // После построения списка проектов заполняем .categorySelect и обновляем видимость
     fillCategorySelects();
     updateProjectsOrCategoryUI();
 
-    // project count logged removed
-
-        // Загрузка категорий проектов с GitHub
         loadProjectCategories().then(categories => {
             projectCategories = categories;
             if (categories.size > 0) {
-                // categories loaded
                 populateTemplateSelect();
-                // fill category selects for existing field blocks
                 fillCategorySelects();
                 updateProjectsOrCategoryUI();
-            } else {
-                // failed to load project categories
             }
         });
 
-        // Функция для заполнения селекта шаблонов категориями
+        // Заполнение селекта шаблонов категориями
         function populateTemplateSelect() {
             const templateSelect = document.getElementById('templateSelect');
 
-            // Удаляем все существующие категории
             const existingCategories = templateSelect.querySelectorAll('option[value^="category_"]');
             existingCategories.forEach(option => option.remove());
 
-            // Добавляем категории как новые опции
             projectCategories.forEach((projects, category) => {
                 const option = document.createElement('option');
                 option.value = `category_${category}`;
@@ -1351,12 +1320,13 @@
                 // Отмечаем проекты из выбранной категории
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
-                    const subdomain = checkbox.value;
+                    const subdomain = checkbox.value.toLowerCase();
 
-                    if (categoryProjects.some(project =>
-                        projectName.includes(project.toLowerCase()) ||
-                        subdomain.includes(project.toLowerCase())
-                    )) {
+                    // Проверяем точное совпадение названия проекта или субдомена
+                    if (categoryProjects.some(project => {
+                        const projectLower = project.toLowerCase().trim();
+                        return projectName === projectLower || subdomain === projectLower;
+                    })) {
                         checkbox.checked = true;
                     }
                 });
@@ -1498,7 +1468,13 @@
 
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
-                    if (targetProjects.some(target => projectName.includes(target))) {
+                    const subdomain = checkbox.value.toLowerCase();
+                    
+                    // Проверяем точное совпадение с одним из целевых проектов
+                    if (targetProjects.some(target => {
+                        const targetLower = target.toLowerCase().trim();
+                        return projectName === targetLower || subdomain === targetLower;
+                    })) {
                         checkbox.checked = true;
                     }
                 });
@@ -1693,8 +1669,12 @@
                 const matchedProjects = [];
                 for (const projNameFragment of projects) {
                     for (const [subdomain, proj] of selectedBySubdomain.entries()) {
-                        const pname = (proj.name || '').toLowerCase();
-                        if (pname.includes(projNameFragment.toLowerCase()) || subdomain.includes(projNameFragment.toLowerCase())) {
+                        const pname = (proj.name || '').toLowerCase().trim();
+                        const subdomainLower = subdomain.toLowerCase().trim();
+                        const projFragmentLower = projNameFragment.toLowerCase().trim();
+                        
+                        // Точное совпадение названия или субдомена
+                        if (pname === projFragmentLower || subdomainLower === projFragmentLower) {
                             // избегать дубликатов
                             if (!matchedProjects.some(mp => (mp.configLink || mp.name) === (proj.configLink || proj.name))) matchedProjects.push(proj);
                         }
@@ -2167,8 +2147,13 @@
             for (const [category, projects] of projectCategories.entries()) {
                 const matched = [];
                 for (const frag of projects) {
+                    const fragLower = frag.toLowerCase().trim();
                     for (const [key, p] of selectedMap.entries()) {
-                        if (key.includes(frag.toLowerCase()) || (p.name || '').toLowerCase().includes(frag.toLowerCase())) {
+                        const keyLower = key.toLowerCase().trim();
+                        const pnameLower = (p.name || '').toLowerCase().trim();
+                        
+                        // Точное совпадение ключа или имени проекта
+                        if (keyLower === fragLower || pnameLower === fragLower) {
                             if (!matched.some(mp => (mp.configLink || mp.name) === (p.configLink || p.name))) matched.push(p);
                         }
                     }
@@ -2469,8 +2454,9 @@
                                 const pname = label.textContent.trim().toLowerCase();
                                 const sub = cb.value.toLowerCase();
                                 const isMatch = fragments.some(f => {
-                                    const fLower = f.toLowerCase();
-                                    return pname.includes(fLower) || sub.includes(fLower);
+                                    const fLower = f.toLowerCase().trim();
+                                    // Точное совпадение названия или субдомена
+                                    return pname === fLower || sub === fLower;
                                 });
 
                                 if (isMatch) {
@@ -2671,3 +2657,5 @@
         processPages();
     }
 })();
+
+
