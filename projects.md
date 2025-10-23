@@ -174,14 +174,12 @@ Voxys
 Потенция	otmeny-za
 Потенция	recebido-ao
 Потенция	rhinoxx-za
-Потенция	rino
 Потенция	rino-potency
 Потенция	rino-potency-dz-cpa
 Потенция	rinoxx-ao
 Потенция	the-touro-potency-dz-cpa
 Потенция	the-touro-potency-dz-cpl
 Потенция	the-touro-potency-dz-cpl-1
-Потенция	the-touro-prostate-dz-cpl
 Потенция	thetouro-potency-ao
 Потенция	touro-potency-full-ao
 Потенция	touro-potency-full-ao-cpa
