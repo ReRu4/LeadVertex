@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.9.1
+// @version      2.9.2
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -1469,7 +1469,7 @@
                 checkboxes.forEach(checkbox => {
                     const projectName = checkbox.nextElementSibling.textContent.trim().toLowerCase();
                     const subdomain = checkbox.value.toLowerCase();
-                    
+
                     // Проверяем точное совпадение с одним из целевых проектов
                     if (targetProjects.some(target => {
                         const targetLower = target.toLowerCase().trim();
@@ -1672,7 +1672,7 @@
                         const pname = (proj.name || '').toLowerCase().trim();
                         const subdomainLower = subdomain.toLowerCase().trim();
                         const projFragmentLower = projNameFragment.toLowerCase().trim();
-                        
+
                         // Точное совпадение названия или субдомена
                         if (pname === projFragmentLower || subdomainLower === projFragmentLower) {
                             // избегать дубликатов
@@ -2151,7 +2151,7 @@
                     for (const [key, p] of selectedMap.entries()) {
                         const keyLower = key.toLowerCase().trim();
                         const pnameLower = (p.name || '').toLowerCase().trim();
-                        
+
                         // Точное совпадение ключа или имени проекта
                         if (keyLower === fragLower || pnameLower === fragLower) {
                             if (!matched.some(mp => (mp.configLink || mp.name) === (p.configLink || p.name))) matched.push(p);
@@ -2360,14 +2360,18 @@
                 const fieldBlocks = document.querySelectorAll('.field-block');
                 const blocksData = Array.from(fieldBlocks).map(block => {
                      const actionValue = block.querySelector('.actionSelect').value;
+                     const columnsInputValue = block.querySelector('.columnsInput').value.trim();
+                     const usersInputValue = block.querySelector('.usersInput').value.trim();
+
                      return {
-                        columns: block.querySelector('.columnsInput').value.trim().split(' ').map(Number).filter(Boolean),
-                        users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim().toLowerCase()).filter(Boolean),
-                        action: actionValue === "1" ? "включить" : "отключить" // Конвертация для старого режима
+                        columnsInput: columnsInputValue.toLowerCase(),
+                        columns: columnsInputValue.split(' ').map(Number).filter(Boolean),
+                        users: usersInputValue.split('\n').map(user => user.trim().toLowerCase()).filter(Boolean),
+                        action: actionValue === "1" ? "включить" : "отключить"
                     };
                 });
 
-                if (blocksData.some(data => !data.columns.length || !data.users.length)) {
+                if (blocksData.some(data => (!data.columns.length && data.columnsInput !== 'all') || (!data.users.length && !data.users.includes('all')))) {
                     alert("Заполните все поля колонок и операторов.");
                     return;
                 }
@@ -2599,17 +2603,46 @@
             return;
         }
 
-        async function processCurrentPage(targetUsers, columns, enable) {
+        async function processCurrentPage(targetUsers, columns, enable, columnsInput) {
             let processedOperators = 0;
             return new Promise(resolve => {
-                const rows = document.querySelectorAll("tr");
                 const applyToAll = targetUsers.includes("all");
+                const useAllColumns = columnsInput === "all";
+
+                if (useAllColumns) {
+                    columns = Object.keys(columnMap).map(Number);
+                }
+
+                if (applyToAll) {
+                    let clickedCount = 0;
+                    columns.forEach(column => {
+                        const mapping = columnMap[column];
+                        if (mapping) {
+                            const { group, type } = mapping;
+                            const toggle = document.querySelector(`a.operator-rules-toggle[data-group="${group}"][data-type="${type}"]`);
+                            if (toggle) {
+                                const icon = toggle.querySelector('i');
+                                const isOn = icon && icon.classList.contains('fa-toggle-on');
+
+                                if ((enable && !isOn) || (!enable && isOn)) {
+                                    toggle.click();
+                                    clickedCount++;
+                                }
+                            }
+                        }
+                    });
+                    console.log(`[DEBUG] Режим all: кликнуто ${clickedCount} тумблеров колонок для ${enable ? 'включения' : 'отключения'}.`);
+                    setTimeout(() => resolve(clickedCount), 1000);
+                    return;
+                }
+
+                const rows = document.querySelectorAll("tr");
 
                 rows.forEach(row => {
                     const usernameElement = row.querySelector("td:first-child");
                     const username = usernameElement?.textContent?.trim().toLowerCase();
 
-                    if (username && (applyToAll || targetUsers.includes(username))) {
+                    if (username && targetUsers.includes(username)) {
                         processedOperators++;
                         columns.forEach(column => {
                             const mapping = columnMap[column];
@@ -2625,7 +2658,7 @@
                         });
                     }
                 });
-                setTimeout(() => resolve(processedOperators), 300); // Задержка для применения кликов
+                setTimeout(() => resolve(processedOperators), 300);
             });
         }
 
@@ -2634,8 +2667,8 @@
             isProcessing = true;
 
             let totalPageOperators = 0;
-            for (const { columns, users, action } of blocksData) {
-                const processedCount = await processCurrentPage(users, columns, action === "включить");
+            for (const { columns, users, action, columnsInput } of blocksData) {
+                const processedCount = await processCurrentPage(users, columns, action === "включить", columnsInput);
                 totalPageOperators += processedCount;
             }
 
@@ -2657,5 +2690,4 @@
         processPages();
     }
 })();
-
 
