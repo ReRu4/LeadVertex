@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.9.2
+// @version      2.9.3
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -164,39 +164,100 @@
     };
 
     addGlobalStyle(`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
         :root {
-            --primary-color: #4a6da7;
-            --primary-dark: #3a5a8c;
-            --secondary-color: #f8f9fa;
-            --text-color: #343a40;
-            --border-color: #dee2e6;
-            --hover-color: #e9ecef;
-            --success-color: #28a745;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
+            --primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            --primary-color: #10b981;
+            --primary-dark: #059669;
+            --secondary-gradient: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            --accent-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            --danger-gradient: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            --dark-bg: #1f2937;
+            --darker-bg: #111827;
+            --card-bg: #ffffff;
+            --text-color: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --hover-bg: #f9fafb;
+            --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.4);
+            --shadow-glow-purple: 0 0 20px rgba(139, 92, 246, 0.4);
         }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%) translateY(-50%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0) translateY(-50%);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+
         .access-panel {
             position: fixed;
             top: 50%;
             right: 20px;
             transform: translateY(-50%);
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            padding: 20px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow-xl);
+            padding: 28px;
             z-index: 9999;
-            width: 280px;
-            max-height: 85vh;
+            width: 340px;
+            max-height: 90vh;
             overflow-y: auto;
-            font-family: Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: var(--text-color);
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            transition: right 0.4s ease-in-out;
+            gap: 18px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: slideInRight 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--border-color);
         }
+
+        .access-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .access-panel::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 10px;
+        }
+
+        .access-panel::-webkit-scrollbar-thumb {
+            background: var(--primary-gradient);
+            border-radius: 10px;
+        }
+
         .access-panel.shifted {
-            right: 320px;
+            right: 360px;
         }
 
         .operator-search-panel {
@@ -204,46 +265,73 @@
             top: 50%;
             transform: translateY(-50%);
             right: 20px;
-            width: 600px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            padding: 20px;
+            width: 660px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow-xl);
+            padding: 28px;
             z-index: 9998;
-            max-height: 85vh;
+            max-height: 90vh;
             overflow-y: auto;
-            font-family: Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: var(--text-color);
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            transition: right 0.4s ease-in-out, opacity 0.4s ease-in-out;
+            gap: 18px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             opacity: 0;
             pointer-events: none;
             border: 1px solid var(--border-color);
         }
 
+        .operator-search-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .operator-search-panel::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 10px;
+        }
+
+        .operator-search-panel::-webkit-scrollbar-thumb {
+            background: var(--primary-gradient);
+            border-radius: 10px;
+        }
+
         .operator-search-panel.visible {
-            right: 320px;
+            right: 380px;
             opacity: 1;
             pointer-events: auto;
+            animation: slideInRight 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .search-results-container {
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 10px;
-            margin-top: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 18px;
+            margin-top: 14px;
             max-height: 45vh;
             overflow-y: auto;
-            background-color: #f8f9fa;
+            background: #f9fafb;
+            box-shadow: inset var(--shadow-sm);
+        }
+
+        .search-results-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .search-results-container::-webkit-scrollbar-thumb {
+            background: var(--primary-gradient);
+            border-radius: 10px;
         }
 
         .operator-group {
-            margin-bottom: 10px;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
+            margin-bottom: 14px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 14px;
+            transition: all 0.3s ease;
         }
+
         .operator-group:last-child {
             border-bottom: none;
             margin-bottom: 0;
@@ -251,23 +339,31 @@
         }
 
         .operator-group-header {
-            font-weight: bold;
+            font-weight: 600;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 5px;
-            border-radius: 4px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: white;
+            border: 2px solid var(--border-color);
         }
+
         .operator-group-header:hover {
-            background-color: var(--hover-color);
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md), var(--shadow-glow);
+            transform: translateY(-2px);
         }
 
         .operator-group-content {
-            padding-left: 20px;
-            margin-top: 5px;
-            display: none; /* Initially hidden */
+            padding-left: 24px;
+            margin-top: 10px;
+            display: none;
+            animation: fadeIn 0.3s ease;
         }
+
         .operator-group-content.visible {
             display: block;
         }
@@ -275,248 +371,548 @@
         .operator-group-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 2px 0;
+            gap: 12px;
+            padding: 8px 10px;
+            transition: all 0.2s ease;
+            border-radius: 8px;
         }
 
-        .users-input-wrapper {
-            display: flex;
-            align-items: stretch;
-            gap: 5px;
+        .operator-group-item:hover {
+            background: var(--hover-bg);
         }
-        .users-input-wrapper .access-textarea {
-            flex-grow: 1;
-            margin: 0;
-        }
-        .find-operators-btn {
-            flex-shrink: 0;
-        }
+
         .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid transparent;
+            background: linear-gradient(white, white) padding-box,
+                        var(--primary-gradient) border-box;
+            border-image: var(--primary-gradient);
+            border-image-slice: 0 0 1 0;
         }
+
         .panel-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: var(--primary-color);
+            font-size: 24px;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             margin: 0;
+            letter-spacing: -0.8px;
         }
+
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            margin-bottom: 5px;
+            gap: 10px;
+            margin-bottom: 10px;
         }
+
         .control-label {
-            font-weight: 600;
+            font-weight: 700;
             font-size: 14px;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            color: var(--dark-bg);
+            letter-spacing: -0.3px;
+            text-transform: uppercase;
+            font-size: 11px;
+            opacity: 0.8;
         }
+
         .hint-text {
             font-size: 12px;
-            color: #6c757d;
+            color: var(--text-muted);
             margin-top: -2px;
+            font-style: italic;
         }
+
         .access-button {
-            background-color: var(--primary-color);
+            background: var(--primary-gradient);
             color: white;
             border: none;
-            border-radius: 4px;
-            padding: 8px 12px;
+            border-radius: 12px;
+            padding: 12px 18px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s, transform 0.1s;
+            font-weight: 700;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-md);
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 12px;
         }
+
+        .access-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.6s;
+        }
+
+        .access-button:hover::before {
+            left: 100%;
+        }
+
         .access-button:hover {
-            background-color: var(--primary-dark);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
+
         .access-button:active {
-            transform: scale(0.98);
+            transform: translateY(0);
+            box-shadow: var(--shadow-sm);
         }
+
         .secondary-button {
-            background-color: var(--secondary-color);
+            background: white;
             color: var(--text-color);
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
         }
+
         .secondary-button:hover {
-            background-color: var(--hover-color);
+            background: var(--hover-bg);
+            border-color: var(--primary-color);
         }
+
         .danger-button {
-            background-color: var(--danger-color);
+            background: var(--danger-gradient);
             color: white;
         }
+
         .danger-button:hover {
-            background-color: #bd2130;
+            box-shadow: var(--shadow-lg), 0 0 20px rgba(239, 68, 68, 0.4);
         }
+
         .success-button {
-            background-color: var(--success-color);
+            background: var(--primary-gradient);
+            color: white;
         }
+
         .success-button:hover {
-            background-color: #218838;
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
+
         .access-input, .access-textarea {
             width: 100%;
-            padding: 8px 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
+            padding: 14px 16px;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
             font-size: 14px;
             box-sizing: border-box;
             white-space: normal;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: white;
+            font-weight: 500;
         }
+
         .access-input:focus, .access-select:focus, .access-textarea:focus {
             outline: none;
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(74, 109, 167, 0.2);
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+            background: #f0fdf4;
         }
+
         .access-checkbox {
-            margin-right: 8px;
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary-color);
         }
+
         .checkbox-container {
             display: flex;
             align-items: center;
-            gap: 20px;
-            margin-bottom: 5px;
+            gap: 24px;
+            margin-bottom: 8px;
         }
+
+        /* Современные iOS-style переключатели */
+        .settings-toggles {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 20px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+            border-radius: 16px;
+            border: 2px solid var(--border-color);
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding: 4px 0;
+        }
+
+        .toggle-switch input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: relative;
+            width: 52px;
+            height: 28px;
+            background: #d1d5db;
+            border-radius: 34px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            left: 3px;
+            top: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .toggle-switch:hover .toggle-slider {
+            background: #9ca3af;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--primary-gradient);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(24px);
+        }
+
+        .toggle-switch:active .toggle-slider::before {
+            width: 26px;
+        }
+
+        .toggle-text {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-color);
+            transition: color 0.2s ease;
+        }
+
+        .toggle-switch:hover .toggle-text {
+            color: var(--primary-color);
+        }
+
+        .toggle-switch input:checked ~ .toggle-text {
+            color: var(--primary-dark);
+        }
+
+        .field-block {
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            background: white;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .field-block:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-4px);
+        }
+
+        .field-block-title {
+            font-weight: 800;
+            margin-bottom: 16px;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--dark-bg);
+            letter-spacing: -0.5px;
+        }
+
+        .remove-field {
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 22px;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+            border: none;
+            padding: 0;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .remove-field:hover {
+            background: var(--danger-gradient);
+            color: white;
+            transform: rotate(90deg) scale(1.1);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        .projects-list {
+            max-height: 340px;
+            overflow-y: auto;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            background: white;
+            margin-top: 10px;
+            box-shadow: inset var(--shadow-sm);
+        }
+
+        .projects-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .projects-list::-webkit-scrollbar-thumb {
+            background: var(--primary-gradient);
+            border-radius: 10px;
+        }
+
+        .project-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+            border-radius: 8px;
+        }
+
+        .project-item:hover {
+            background: #f0fdf4;
+            border-color: var(--primary-color);
+        }
+
+        .project-item:last-child {
+            border-bottom: none;
+        }
+
+        .project-name {
+            margin-left: 12px;
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .list-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .projects-actions-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .projects-action-btn {
+            flex: 1;
+            font-size: 13px;
+            padding: 10px 14px;
+            cursor: pointer;
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            font-weight: 700;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .projects-action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .projects-action-btn:active {
+            transform: translateY(0);
+        }
+
+        .select-all-btn {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+            border-color: var(--primary-color);
+            color: var(--primary-dark);
+        }
+
+        .select-all-btn:hover {
+            background: var(--primary-gradient);
+            color: white;
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md), var(--shadow-glow);
+        }
+
+        .unselect-all-btn {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+            border-color: #ef4444;
+            color: #dc2626;
+        }
+
+        .unselect-all-btn:hover {
+            background: var(--danger-gradient);
+            color: white;
+            border-color: #ef4444;
+            box-shadow: var(--shadow-md), 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .list-action {
+            font-size: 12px;
+            padding: 4px 8px;
+            cursor: pointer;
+            color: var(--primary-color);
+            background: rgba(16, 185, 129, 0.1);
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .list-action:hover {
+            background: rgba(16, 185, 129, 0.2);
+            transform: scale(1.05);
+        }
+
+        .button-container {
+            display: flex;
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        .divider {
+            height: 3px;
+            background: var(--primary-gradient);
+            margin: 20px 0;
+            border-radius: 3px;
+            opacity: 0.3;
+        }
+
+        .access-select {
+            width: 100%;
+            height: 48px;
+            padding: 12px 16px;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: white;
+            cursor: pointer;
+        }
+
+        .access-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+        }
+
+        .progress-container {
+            margin-top: 24px;
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .progress-bar {
+            height: 14px;
+            background: #e5e7eb;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary-gradient);
+            width: 0%;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 20px;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        .progress-text {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
         .access-toggle {
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
-        .field-block {
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 10px;
-            background-color: #f8f9fa;
-        }
-        .field-block-title {
-            font-weight: bold;
-            margin-bottom: 8px;
-            font-size: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+
         .field-actions {
             display: flex;
-            gap: 5px;
+            gap: 8px;
         }
-        .remove-field {
-            color: var(--danger-color);
-            cursor: pointer;
-            font-size: 18px;
-            background: none;
-            border: none;
-            padding: 0;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-        }
-        .remove-field:hover {
-            background-color: rgba(220, 53, 69, 0.1);
-        }
-        .projects-list {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 10px;
-            background-color: white;
-            margin-top: 5px;
-        }
-        .project-item {
-            display: flex;
-            align-items: center;
-            padding: 5px 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-        .project-item:last-child {
-            border-bottom: none;
-        }
-        .project-name {
-            margin-left: 8px;
-            flex-grow: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .list-actions {
-            display: flex;
-            gap: 5px;
-        }
-        .list-action {
-            font-size: 12px;
-            padding: 2px 5px;
-            cursor: pointer;
-            color: var(--primary-color);
-            background: none;
-            border: none;
-        }
-        .list-action:hover {
-            text-decoration: underline;
-        }
-        .button-container {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .divider {
-            height: 1px;
-            background-color: var(--border-color);
-            margin: 10px 0;
-        }
-        .checkbox-container {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .access-select {
-            width: 100%;
-            height: 40px;
-            padding: 8px 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-            text-overflow: ellipsis;
-            appearance: menulist;
-            -webkit-appearance: menulist;
-            -moz-appearance: menulist;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .progress-container {
-            margin-top: 15px;
-            display: none;
-        }
-        .progress-bar {
-            height: 10px;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background-color: var(--primary-color);
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-        .progress-text {
-            margin-top: 5px;
-            text-align: center;
-            font-size: 12px;
-        }
-    `);
 
-    function makeSafeId(str) {
+        .users-input-wrapper {
+            display: flex;
+            align-items: stretch;
+            gap: 10px;
+        }
+
+        .users-input-wrapper .access-textarea {
+            flex-grow: 1;
+            margin: 0;
+        }
+
+        .find-operators-btn {
+            flex-shrink: 0;
+        }
+
+        /* Стили для кастомных скроллбаров */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) #f3f4f6;
+        }
+    `);    function makeSafeId(str) {
         if (!str) return 'id-empty';
         try {
             const utf8 = encodeURIComponent(str);
@@ -560,35 +956,38 @@
                     <button id="showSearchPanelBtn" class="access-button secondary-button" title="Найти операторов" style="padding: 5px 8px; font-size: 12px;">🔍</button>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <button id="openScriptSettingsBtn" class="access-button secondary-button" title="Настройки скрипта" style="padding: 5px 8px; font-size: 12px;">⚙️</button>
                     <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
                 </div>
             </div>
 
-            <div class="control-group">
-                <div class="checkbox-container" style="justify-content: space-between;">
-                    <label for="legacyModeToggle" style="white-space: nowrap; cursor: pointer;">
-                        <input type="checkbox" id="legacyModeToggle" class="access-checkbox">
-                        Старый режим
-                    </label>
-                </div>
-            </div>
+            <div class="settings-toggles">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="legacyModeToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">⚡ Старый режим</span>
+                </label>
 
-            <div class="control-group">
-                <div class="checkbox-container">
-                    <input type="checkbox" id="columnRangeToggle" class="access-checkbox">
-                    <label for="columnRangeToggle" style="white-space: nowrap;">Использовать 15 колонок</label>
-                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="columnRangeToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">📊 Использовать 15 колонок</span>
+                </label>
+
+                <label class="toggle-switch">
+                    <input type="checkbox" id="templatesPerSettingToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">🎯 Режим категорий</span>
+                </label>
             </div>
 
             <div class="control-group" id="projectsControlGroup">
                 <label class="control-label" id="projectsControlLabel">Выберите таблицы:</label>
-                <div class="access-toggle">
-                    <button id="toggleButton" class="access-button secondary-button">Показать проекты</button>
-                    <div class="list-actions">
-                        <button id="selectAllButton" class="list-action">Выбрать все</button>
-                        <button id="unselectAllButton" class="list-action">Снять все</button>
-                    </div>
+                <button id="toggleButton" class="access-button secondary-button" style="width: 100%; margin-bottom: 8px;">
+                    📋 Показать проекты
+                </button>
+                <div class="projects-actions-bar">
+                    <button id="selectAllButton" class="projects-action-btn select-all-btn">✓ Выбрать все</button>
+                    <button id="unselectAllButton" class="projects-action-btn unselect-all-btn">✕ Снять все</button>
                 </div>
                 <div id="namesList" class="projects-list" style="display: none;"></div>
             </div>
@@ -612,12 +1011,10 @@
                         <div class="control-group">
                             <label class="control-label">Колонки (через пробел):</label>
                             <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
-                            <span class="hint-text">Введите "all" для выбора всех колонок</span>
                         </div>
                         <div class="control-group">
                             <label class="control-label">Операторы:</label>
                             <textarea rows="3" class="usersInput access-textarea" placeholder="По одному оператору на строку"></textarea>
-                            <span class="hint-text">Введите "all" для выбора всех операторов</span>
                         </div>
                         <div class="control-group">
                             <label class="control-label">Действие:</label>
@@ -760,19 +1157,7 @@
             if (templateSelectEl) templateSelectEl.style.display = perSetting ? 'none' : '';
         }
 
-        const scriptSettingsBlock = document.createElement('div');
-        scriptSettingsBlock.style.marginTop = '8px';
-        scriptSettingsBlock.style.display = 'none';
-        scriptSettingsBlock.innerHTML = `
-            <div style="display:flex; align-items:center; gap:8px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="templatesPerSettingToggle" class="access-checkbox">
-                    Включать шаблоны в рамках одной настройки (пер-настройка проектов)
-                </label>
-            </div>
-        `;
-        panel.appendChild(scriptSettingsBlock);
-
+        // Инициализация состояния templatesPerSettingToggle из localStorage
         const savedTemplatesPerSetting = localStorage.getItem('proZvon_templatesPerSetting');
         if (savedTemplatesPerSetting !== null) {
             const saved = savedTemplatesPerSetting === '1';
@@ -780,92 +1165,16 @@
             if (tgl) tgl.checked = saved;
         }
         updateGlobalProjectControlsVisibility();
+
+        // Обработчик изменения templatesPerSettingToggle
         const tmplToggle = document.getElementById('templatesPerSettingToggle');
         if (tmplToggle) {
             tmplToggle.addEventListener('change', () => {
+                localStorage.setItem('proZvon_templatesPerSetting', tmplToggle.checked ? '1' : '0');
                 updateProjectsOrCategoryUI();
                 updateGlobalProjectControlsVisibility();
             });
         }
-
-        // Открытие модального окна настроек
-        document.getElementById('openScriptSettingsBtn').addEventListener('click', () => {
-            let overlay = document.getElementById('settingsOverlay');
-            let modal = document.getElementById('settingsModal');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = 'settingsOverlay';
-                overlay.style.position = 'fixed';
-                overlay.style.left = '0';
-                overlay.style.top = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.background = 'rgba(0,0,0,0.45)';
-                overlay.style.zIndex = '10002';
-                overlay.style.display = 'none';
-                document.body.appendChild(overlay);
-            }
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = 'settingsModal';
-                modal.style.position = 'fixed';
-                modal.style.left = '50%';
-                modal.style.top = '50%';
-                modal.style.transform = 'translate(-50%,-50%)';
-                modal.style.background = '#fff';
-                modal.style.border = '1px solid #ccc';
-                modal.style.padding = '12px';
-                modal.style.zIndex = '10003';
-                modal.style.width = '520px';
-                modal.style.borderRadius = '6px';
-                modal.style.display = 'none';
-                modal.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="margin:0;">Настройки скрипта</h3>
-                        <button id="settingsCloseBtn" class="access-button secondary-button" style="padding:4px 8px;">✕</button>
-                    </div>
-                    <div style="margin:12px 0;">
-                        <label style="display:flex; align-items:center; gap:8px;">
-                            <input type="checkbox" id="settings_templatesPerSetting"> Включать шаблоны в рамках одной настройки (per-setting)
-                        </label>
-                    </div>
-                    <div style="margin-top:6px; color:#666; font-size:13px;">Изменения применяются немедленно.</div>
-                `;
-                document.body.appendChild(modal);
-
-                modal.querySelector('#settingsCloseBtn').addEventListener('click', hideSettingsModal);
-
-                // обработчик изменения чекбокса внутри модалки
-                modal.querySelector('#settings_templatesPerSetting').addEventListener('change', (ev) => {
-                    const checked = ev.target.checked;
-                    const hiddenToggle = document.getElementById('templatesPerSettingToggle');
-                    if (hiddenToggle) hiddenToggle.checked = checked;
-                    localStorage.setItem('proZvon_templatesPerSetting', checked ? '1' : '0');
-                    updateProjectsOrCategoryUI();
-                    updateGlobalProjectControlsVisibility();
-                });
-            }
-
-            function showSettingsModal() {
-                const modalEl = document.getElementById('settingsModal');
-                const overlayEl = document.getElementById('settingsOverlay');
-                const saved = localStorage.getItem('proZvon_templatesPerSetting') === '1';
-                const cb = modalEl.querySelector('#settings_templatesPerSetting');
-                if (cb) cb.checked = saved;
-                overlayEl.style.display = 'block';
-                modalEl.style.display = 'block';
-            }
-
-            function hideSettingsModal() {
-                const modalEl = document.getElementById('settingsModal');
-                const overlayEl = document.getElementById('settingsOverlay');
-                if (overlayEl) overlayEl.style.display = 'none';
-                if (modalEl) modalEl.style.display = 'none';
-            }
-
-            showSettingsModal();
-        });
-
 
         const confirmButton = document.getElementById('confirmButton');
 
@@ -962,7 +1271,7 @@
         toggleButton.addEventListener('click', () => {
             const isVisible = namesList.style.display !== 'none';
             namesList.style.display = isVisible ? 'none' : 'block';
-            toggleButton.textContent = isVisible ? 'Показать проекты' : 'Скрыть проекты';
+            toggleButton.innerHTML = isVisible ? '📋 Показать проекты' : '📂 Скрыть проекты';
         });
 
         selectAllButton.addEventListener('click', () => {
@@ -989,12 +1298,10 @@
                 <div class="control-group">
                     <label class="control-label">Колонки (через пробел):</label>
                     <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
-                    <span class="hint-text">Введите "all" для выбора всех колонок</span>
                 </div>
                 <div class="control-group">
                     <label class="control-label">Операторы:</label>
                     <textarea rows="3" class="usersInput access-textarea" placeholder="По одному оператору на строку"></textarea>
-                    <span class="hint-text">Введите "all" для выбора всех операторов</span>
                 </div>
                 <div class="control-group">
                     <label class="control-label">Действие:</label>
@@ -1485,16 +1792,6 @@
         document.getElementById('closeButton').addEventListener('click', () => {
             panel.remove();
             searchPanel.remove();
-        });
-
-        // Обработчик открытия настроек скрипта (скролл к блоку настроек)
-        document.getElementById('openScriptSettingsBtn').addEventListener('click', () => {
-            const toggle = document.getElementById('templatesPerSettingToggle');
-            if (!toggle) return;
-            toggle.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // краткая подсветка
-            toggle.style.outline = '2px solid rgba(74,109,167,0.6)';
-            setTimeout(() => toggle.style.outline = '', 1600);
         });
 
         async function findOperatorsWithAccess(projects, columns) {
