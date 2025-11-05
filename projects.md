@@ -104,7 +104,6 @@ Voxys
 Потенция	rino-potency-dz-cpa
 Потенция	the-touro-potency-dz-cpl
 Потенция	the-touro-potency-dz-cpl-1
-Потенция	the-touro-prostate-dz-cpl
 Потенция	touro-potency-full-ao
 Потенция	touro-potency-full-ao-cpa
 Потенция	x-power-potency-ao
