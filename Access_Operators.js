@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.9.3
+// @version      2.10.1
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -16,7 +16,8 @@
 (function () {
     'use strict';
 
-    const CONCURRENT_LIMIT = 10; // Количество одновременных запросов
+    const CONCURRENT_LIMIT_APPLY = 100; // Количество одновременных запросов при проставлении
+    const CONCURRENT_LIMIT_CHECK = 100; // Количество одновременных запросов при проверке
     const swap = "accessConfig";
 
     function decrypt(encrypted, secret) {
@@ -881,6 +882,28 @@
             color: var(--text-color);
         }
 
+        .progress-fill-check {
+            height: 100%;
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            width: 0%;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 20px;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill-check::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+            animation: shimmer 2s infinite;
+        }
+
         .access-toggle {
             display: flex;
             align-items: center;
@@ -978,6 +1001,12 @@
                     <span class="toggle-slider"></span>
                     <span class="toggle-text">🎯 Режим категорий</span>
                 </label>
+
+                <label class="toggle-switch">
+                    <input type="checkbox" id="autoCheckToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">🔍 Автопроверка после применения</span>
+                </label>
             </div>
 
             <div class="control-group" id="projectsControlGroup">
@@ -1039,10 +1068,24 @@
                 <div class="progress-text" id="progressText">Обработано: 0 / 0</div>
             </div>
 
+            <div class="progress-container" id="checkProgressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill-check" id="checkProgressFill"></div>
+                </div>
+                <div class="progress-text" id="checkProgressText">Проверено: 0 / 0</div>
+            </div>
+
             <div class="divider"></div>
 
-            <div class="button-container">
-                <button id="confirmButton" class="access-button success-button" style="flex-grow: 1;">Применить</button>
+            <div class="button-container" style="flex-direction: column; gap: 10px;">
+                <button id="confirmButton" class="access-button success-button" style="width: 100%;">Применить</button>
+                <button id="checkAccessButton" class="access-button secondary-button" style="width: 100%; display: none;">🔍 Проверить доступы</button>
+                <button id="applyMissingButton" class="access-button success-button" style="width: 100%; display: none;">✅ Проставить оставшиеся</button>
+            </div>
+
+            <div id="checkResultsContainer" style="display: none; margin-top: 15px; padding: 15px; border-radius: 12px; background: #f9fafb; border: 2px solid var(--border-color);">
+                <div style="font-weight: 700; font-size: 14px; margin-bottom: 10px; color: var(--text-color);">Результаты проверки:</div>
+                <div id="checkResultsContent" style="font-size: 13px; color: var(--text-muted);"></div>
             </div>
         `;
         document.body.appendChild(panel);
@@ -1173,6 +1216,22 @@
                 localStorage.setItem('proZvon_templatesPerSetting', tmplToggle.checked ? '1' : '0');
                 updateProjectsOrCategoryUI();
                 updateGlobalProjectControlsVisibility();
+            });
+        }
+
+        // Инициализация состояния autoCheckToggle из localStorage
+        const savedAutoCheck = localStorage.getItem('proZvon_autoCheck');
+        if (savedAutoCheck !== null) {
+            const saved = savedAutoCheck === '1';
+            const tgl = document.getElementById('autoCheckToggle');
+            if (tgl) tgl.checked = saved;
+        }
+
+        // Обработчик изменения autoCheckToggle
+        const autoCheckToggle = document.getElementById('autoCheckToggle');
+        if (autoCheckToggle) {
+            autoCheckToggle.addEventListener('change', () => {
+                localStorage.setItem('proZvon_autoCheck', autoCheckToggle.checked ? '1' : '0');
             });
         }
 
@@ -1797,7 +1856,7 @@
         async function findOperatorsWithAccess(projects, columns) {
             let hasErrors = false;
 
-            const results = await runWithConcurrency(projects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+            const results = await runWithConcurrency(projects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT_CHECK);
 
             results.forEach(result => {
                 if (result.error) hasErrors = true;
@@ -1866,7 +1925,7 @@
             });
 
             if (toFetch.length > 0) {
-                await runWithConcurrency(toFetch.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+                await runWithConcurrency(toFetch.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT_CHECK);
             }
 
             // Собрать результаты из кеша
@@ -1997,7 +2056,7 @@
             for (const [category, matchedProjects] of categoryToMatched.entries()) {
                 const merged = new Map(); // operatorLower -> Set(columns)
                 // Получаем правила для проектов категории сейчас
-                const rulesResults = await runWithConcurrency(matchedProjects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+                const rulesResults = await runWithConcurrency(matchedProjects.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT_CHECK);
                 rulesResults.forEach(({ access }) => {
                     access.forEach((colsSet, operator) => {
                         const op = operator.toLowerCase();
@@ -2469,7 +2528,7 @@
                 operatorsLower.forEach(op => mapForCategory.set(op, { name: op, foundIn: new Map(), notFoundIn: new Set() }));
 
                 // Получаем правила текущих проектов категории
-                const rulesResults = await runWithConcurrency(matched.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT);
+                const rulesResults = await runWithConcurrency(matched.map(p => () => fetchProjectRules(p)), CONCURRENT_LIMIT_CHECK);
 
                 // Пробегаем результаты и наполняем структуру
                 for (let i = 0; i < matched.length; i++) {
@@ -2628,7 +2687,42 @@
             });
         }
 
-        // Функция для обновления прогресса
+        // Получение текущих правил оператора
+        async function getOperatorRules(subdomain, trash, operatorID) {
+            const cacheKey = `${subdomain}_${operatorID}`;
+            if (rulesCache.has(cacheKey)) {
+                return rulesCache.get(cacheKey);
+            }
+
+            return new Promise((resolve, reject) => {
+                const url = `https://${subdomain}.leadvertex.ru/api/callmode/v2/getOperatorRules.html?token=${trash}&operatorID=${operatorID}`;
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            try {
+                                const data = JSON.parse(response.responseText);
+                                rulesCache.set(cacheKey, data);
+                                resolve(data);
+                            } catch (e) {
+                                reject(new Error(`Ошибка парсинга ответа сервера: ${e.message}`));
+                            }
+                        } else {
+                            reject(new Error(`HTTP ошибка ${response.status}: ${response.statusText}`));
+                        }
+                    },
+                    onerror: (err) => {
+                        reject(new Error(`Ошибка сетевого запроса: ${err.error || 'неизвестная ошибка'}`));
+                    }
+                });
+            });
+        }
+
+        // Глобальная переменная для хранения отсутствующих доступов
+        let missingAccesses = [];
+
+        // Функция для обновления прогресса применения доступов
         function updateProgress(current, total) {
             const progressFill = document.getElementById('progressFill');
             const progressText = document.getElementById('progressText');
@@ -2636,6 +2730,16 @@
 
             progressFill.style.width = `${percent}%`;
             progressText.textContent = `Обработано: ${current} / ${total}`;
+        }
+
+        // Функция для обновления прогресса проверки
+        function updateCheckProgress(current, total) {
+            const progressFill = document.getElementById('checkProgressFill');
+            const progressText = document.getElementById('checkProgressText');
+            const percent = Math.round((current / total) * 100);
+
+            progressFill.style.width = `${percent}%`;
+            progressText.textContent = `Проверено: ${current} / ${total}`;
         }
 
         // Обработчик подтверждения настроек
@@ -2815,7 +2919,7 @@
                     };
                 });
 
-                await runWithConcurrency(fetchFns, CONCURRENT_LIMIT);
+                await runWithConcurrency(fetchFns, CONCURRENT_LIMIT_APPLY);
 
                 // Построим задачи: для каждой настройки — по её списку проектов (или по глобальным, если список пуст)
                 for (let i = 0; i < blocksData.length; i++) {
@@ -2861,7 +2965,7 @@
                                 for (const column of columns) {
                                     const { group, type } = columnMap[column];
                                     tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
-                                        console.error(`Ошибка установки правила для ${operatorLogin} в ${name}:`, error);
+                                        // Тихо игнорируем ошибки
                                     }));
                                 }
                             }
@@ -2879,12 +2983,348 @@
                     updateProgress(completedOperations, totalOperations);
                 });
 
-                await runWithConcurrency(wrappedTasks, CONCURRENT_LIMIT);
+                await runWithConcurrency(wrappedTasks, CONCURRENT_LIMIT_APPLY);
 
                 // Все задачи выполнены
                 confirmButton.disabled = false;
                 confirmButton.textContent = 'Применить';
+
+                // Показываем кнопку проверки после применения
+                document.getElementById('checkAccessButton').style.display = 'block';
+
+                // Проверяем, включена ли автопроверка
+                const autoCheck = document.getElementById('autoCheckToggle')?.checked;
+
+                if (autoCheck) {
+                    // Автоматически запускаем проверку
+                    setTimeout(() => {
+                        document.getElementById('checkAccessButton').click();
+                    }, 500);
+                } else {
+                    alert('Доступы применены! Теперь вы можете проверить их наличие.');
+                }
             }
+        });
+
+        // Обработчик кнопки проверки доступов
+        document.getElementById('checkAccessButton').addEventListener('click', async () => {
+            const settings = GM_getValue(swap);
+            if (!settings || !settings.encryptedKey || !settings.secret) {
+                alert("Параметры доступа не найдены.");
+                return;
+            }
+
+            let top;
+            try {
+                top = decrypt(settings.encryptedKey, settings.secret);
+                if (!top) throw new Error("Результат расшифровки - пустая строка.");
+            } catch (e) {
+                alert(`Ошибка при расшифровке токена: ${e.message}`);
+                return;
+            }
+
+            const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
+                .map(cb => ({
+                    subdomain: cb.value,
+                    name: cb.dataset.projectName || cb.value
+                }));
+
+            const use15Columns = document.getElementById('columnRangeToggle').checked;
+            const columnMap = use15Columns ? columnMap15 : columnMap9;
+            const allColumns = Object.keys(columnMap).map(Number);
+
+            if (!selectedProjects.length) {
+                alert("Выберите хотя бы один проект.");
+                return;
+            }
+
+            const fieldBlocks = document.querySelectorAll('.field-block');
+            const blocksData = Array.from(fieldBlocks).map(block => {
+                const columnsInput = block.querySelector('.columnsInput').value.trim().toLowerCase();
+                let columns;
+
+                if (columnsInput === 'all') {
+                    columns = allColumns;
+                } else {
+                    columns = columnsInput.split(' ').map(Number).filter(Boolean);
+                }
+
+                return {
+                    columns: columns,
+                    users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim()).filter(Boolean),
+                    action: block.querySelector('.actionSelect').value
+                };
+            });
+
+            const templatesPerSetting = document.getElementById('templatesPerSettingToggle')?.checked;
+            const perBlockProjects = [];
+
+            if (templatesPerSetting) {
+                Array.from(fieldBlocks).forEach(block => {
+                    const catSel = block.querySelector('.categorySelect');
+                    if (catSel && catSel.value) {
+                        const cat = catSel.value;
+                        let fragments = projectCategories.get(cat) || [];
+                        if (fragments.length === 0) {
+                            fragments = [cat];
+                        }
+
+                        const matched = [];
+                        const allProjectItems = document.querySelectorAll('#namesList .project-item');
+
+                        allProjectItems.forEach(item => {
+                            const cb = item.querySelector('input[type="checkbox"]');
+                            const label = item.querySelector('.project-name');
+                            if (!cb || !label) return;
+                            const pname = label.textContent.trim().toLowerCase();
+                            const sub = cb.value.toLowerCase();
+                            const isMatch = fragments.some(f => {
+                                const fLower = f.toLowerCase().trim();
+                                return pname === fLower || sub === fLower;
+                            });
+
+                            if (isMatch) {
+                                matched.push({ subdomain: cb.value, name: label.textContent.trim() });
+                            }
+                        });
+
+                        perBlockProjects.push({ projects: matched, hasCategory: true });
+                    } else {
+                        perBlockProjects.push({ projects: [], hasCategory: false });
+                    }
+                });
+            }
+
+            const checkAccessButton = document.getElementById('checkAccessButton');
+            checkAccessButton.disabled = true;
+            checkAccessButton.textContent = 'Проверка...';
+
+            // Показываем прогресс-бар проверки
+            document.getElementById('checkProgressContainer').style.display = 'block';
+            updateCheckProgress(0, 100);
+
+            // Собираем список проверок
+            missingAccesses = [];
+            const allProjectsToCheck = new Map();
+
+            if (templatesPerSetting) {
+                perBlockProjects.forEach(blockInfo => {
+                    if (blockInfo.hasCategory) {
+                        blockInfo.projects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
+                    } else {
+                        selectedProjects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
+                    }
+                });
+            } else {
+                selectedProjects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
+            }
+
+            const operatorsByDomain = {};
+            const fetchFns = Array.from(allProjectsToCheck.values()).map(project => {
+                return async () => {
+                    const subdomain = project.subdomain;
+                    try {
+                        operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
+                    } catch (error) {
+                        // Тихо игнорируем ошибки
+                        operatorsByDomain[subdomain] = null;
+                    }
+                };
+            });
+
+            await runWithConcurrency(fetchFns, CONCURRENT_LIMIT_CHECK);
+
+            // Собираем все задачи проверки сразу для максимального параллелизма
+            const allCheckTasks = [];
+
+            for (let i = 0; i < blocksData.length; i++) {
+                const blockData = blocksData[i];
+                const { columns, users, action } = blockData;
+
+                let projectsForBlock = selectedProjects;
+                if (templatesPerSetting && perBlockProjects[i]) {
+                    if (perBlockProjects[i].hasCategory) {
+                        projectsForBlock = perBlockProjects[i].projects;
+                        if (projectsForBlock.length === 0) continue;
+                    }
+                }
+
+                for (const project of projectsForBlock) {
+                    const { subdomain, name } = project;
+                    const operators = operatorsByDomain[subdomain];
+                    if (!operators) continue;
+
+                    const loginToIds = {};
+                    for (const [id, login] of Object.entries(operators)) {
+                        const key = (login || '').toLowerCase();
+                        if (!loginToIds[key]) loginToIds[key] = [];
+                        loginToIds[key].push(id);
+                    }
+
+                    let operatorIds = [];
+                    if (users.includes("all")) {
+                        operatorIds = Object.keys(operators);
+                    } else {
+                        for (const user of users) {
+                            const key = user.toLowerCase();
+                            if (loginToIds[key]) operatorIds.push(...loginToIds[key]);
+                        }
+                    }
+
+                    const uniqueOpIds = Array.from(new Set(operatorIds));
+
+                    // Добавляем задачи проверки каждого оператора в общий массив
+                    uniqueOpIds.forEach(operatorId => {
+                        allCheckTasks.push(async () => {
+                            const operatorLogin = operators[operatorId];
+
+                            try {
+                                const rules = await getOperatorRules(subdomain, top, operatorId);
+
+                                // Проверяем каждую колонку
+                                for (const column of columns) {
+                                    const { group, type } = columnMap[column];
+                                    const ruleKey = `${group}_${type}`;
+                                    const hasAccess = rules && rules[ruleKey] === '1';
+                                    const shouldHaveAccess = action === '1';
+
+                                    if (shouldHaveAccess && !hasAccess) {
+                                        missingAccesses.push({
+                                            subdomain,
+                                            projectName: name,
+                                            operatorId,
+                                            operatorLogin,
+                                            column,
+                                            group,
+                                            type,
+                                            action
+                                        });
+                                    }
+                                }
+                            } catch (error) {
+                                // Тихо игнорируем ошибки (например, 404 - оператор не найден в проекте)
+                            }
+                        });
+                    });
+                }
+            }
+
+            // Запускаем все задачи проверки одновременно с ограничением и обновляем прогресс
+            const totalCheckTasks = allCheckTasks.length;
+            let completedCheckTasks = 0;
+            updateCheckProgress(0, totalCheckTasks);
+
+            const wrappedCheckTasks = allCheckTasks.map(fn => async () => {
+                await fn();
+                completedCheckTasks++;
+                updateCheckProgress(completedCheckTasks, totalCheckTasks);
+            });
+
+            await runWithConcurrency(wrappedCheckTasks, CONCURRENT_LIMIT_CHECK);
+
+            checkAccessButton.disabled = false;
+            checkAccessButton.textContent = '🔍 Проверить доступы';
+
+            // Показываем результаты
+            const resultsContainer = document.getElementById('checkResultsContainer');
+            const resultsContent = document.getElementById('checkResultsContent');
+            resultsContainer.style.display = 'block';
+
+            if (missingAccesses.length === 0) {
+                resultsContent.innerHTML = '<div style="color: #10b981; font-weight: 600;">✅ Все доступы проставлены корректно!</div>';
+                document.getElementById('applyMissingButton').style.display = 'none';
+            } else {
+                const grouped = {};
+                missingAccesses.forEach(access => {
+                    const key = `${access.projectName} - ${access.operatorLogin}`;
+                    if (!grouped[key]) {
+                        grouped[key] = [];
+                    }
+                    grouped[key].push(access.column);
+                });
+
+                let html = `<div style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">⚠️ Найдено ${missingAccesses.length} отсутствующих доступов:</div>`;
+                html += '<div style="max-height: 300px; overflow-y: auto;">';
+
+                for (const [key, columns] of Object.entries(grouped)) {
+                    html += `<div style="padding: 8px; margin: 5px 0; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">`;
+                    html += `<div style="font-weight: 600; color: #1f2937;">${key}</div>`;
+                    html += `<div style="color: #6b7280; font-size: 12px;">Отсутствуют колонки: ${columns.join(', ')}</div>`;
+                    html += `</div>`;
+                }
+
+                html += '</div>';
+                resultsContent.innerHTML = html;
+                document.getElementById('applyMissingButton').style.display = 'block';
+            }
+        });
+
+        // Обработчик кнопки проставления оставшихся доступов
+        document.getElementById('applyMissingButton').addEventListener('click', async () => {
+            if (missingAccesses.length === 0) {
+                alert('Нет отсутствующих доступов для проставления.');
+                return;
+            }
+
+            const settings = GM_getValue(swap);
+            if (!settings || !settings.encryptedKey || !settings.secret) {
+                alert("Параметры доступа не найдены.");
+                return;
+            }
+
+            let top;
+            try {
+                top = decrypt(settings.encryptedKey, settings.secret);
+                if (!top) throw new Error("Результат расшифровки - пустая строка.");
+            } catch (e) {
+                alert(`Ошибка при расшифровке токена: ${e.message}`);
+                return;
+            }
+
+            const applyMissingButton = document.getElementById('applyMissingButton');
+            applyMissingButton.disabled = true;
+            applyMissingButton.textContent = 'Проставляем...';
+
+            document.getElementById('progressContainer').style.display = 'block';
+
+            const tasks = missingAccesses.map(access => {
+                return () => setOperatorRule(
+                    access.subdomain,
+                    top,
+                    access.operatorId,
+                    access.group,
+                    access.type,
+                    access.action
+                ).catch(error => {
+                    // Тихо игнорируем ошибки
+                });
+            });
+
+            const totalOperations = tasks.length;
+            let completedOperations = 0;
+            updateProgress(0, totalOperations);
+
+            const wrappedTasks = tasks.map(fn => async () => {
+                await fn();
+                completedOperations++;
+                updateProgress(completedOperations, totalOperations);
+            });
+
+            await runWithConcurrency(wrappedTasks, CONCURRENT_LIMIT_APPLY);
+
+            applyMissingButton.disabled = false;
+            applyMissingButton.textContent = '✅ Проставить оставшиеся';
+            applyMissingButton.style.display = 'none';
+
+            // Очищаем кэш правил для повторной проверки
+            rulesCache.clear();
+
+            const resultsContent = document.getElementById('checkResultsContent');
+            resultsContent.innerHTML = '<div style="color: #10b981; font-weight: 600;">✅ Все отсутствующие доступы успешно проставлены!</div>';
+
+            missingAccesses = [];
+
+            alert('Оставшиеся доступы успешно проставлены!');
         });
     }
 
@@ -2987,4 +3427,3 @@
         processPages();
     }
 })();
-
