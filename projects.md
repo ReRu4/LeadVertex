@@ -80,7 +80,6 @@ Voxys
 ЖКТ	cayenne-active-ao
 ЖКТ	cold-parasit--dz
 ЖКТ	dz-annuler
-ЖКТ	parasit-dz
 ЖКТ	parasit-zhkt-dz
 ЖКТ	parasit-zhkt-dz-cpa
 ЖКТ	
