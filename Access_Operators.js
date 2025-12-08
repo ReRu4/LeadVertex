@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.10.1
+// @version      2.13.0
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -15,6 +15,47 @@
 // ==/UserScript==
 (function () {
     'use strict';
+
+    const SERVER_URL_KEY = "accessServerUrl_encrypted";
+    const ENCRYPTION_KEY_STORAGE = "accessServerEncryptionKey";
+
+    function decryptServerUrl(encrypted, key) {
+        try {
+            const decrypted = CryptoJS.AES.decrypt(encrypted, key);
+            const url = decrypted.toString(CryptoJS.enc.Utf8);
+            if (!url) throw new Error('Пустой результат расшифровки');
+            return url;
+        } catch (e) {
+            console.error('Ошибка расшифровки URL:', e);
+            return null;
+        }
+    }
+
+    function getServerUrl() {
+        const encrypted = GM_getValue(SERVER_URL_KEY, '');
+        const key = GM_getValue(ENCRYPTION_KEY_STORAGE, '');
+        if (!encrypted || !key) return null;
+        return decryptServerUrl(encrypted, key);
+    }
+
+    GM_registerMenuCommand('🌐 Настроить адрес сервера', () => {
+        const instructions = `Для настройки сервера вам потребуется:\n\n1. Зашифрованный URL сервера\n2. Ключ шифрования\n\nОба параметра предоставляет администратор.`;
+        alert(instructions);
+
+        const encryptedUrl = prompt('Шаг 1/2: Введите зашифрованный URL сервера:', GM_getValue(SERVER_URL_KEY, ''));
+        if (!encryptedUrl) return;
+
+        const encryptionKey = prompt('Шаг 2/2: Введите ключ шифрования:', GM_getValue(ENCRYPTION_KEY_STORAGE, ''));
+        if (!encryptionKey) return;
+
+        // Проверяем расшифровку
+        const decrypted = decryptServerUrl(encryptedUrl, encryptionKey);
+        if (decrypted) {
+            alert(`✅ Сервер успешно настроен!`);
+        } else {
+            alert('❌ Ошибка расшифровки!\n\nПроверьте правильность зашифрованного URL и ключа шифрования.');
+        }
+    });
 
     const CONCURRENT_LIMIT_APPLY = 100; // Количество одновременных запросов при проставлении
     const CONCURRENT_LIMIT_CHECK = 100; // Количество одновременных запросов при проверке
@@ -1002,11 +1043,6 @@
                     <span class="toggle-text">🎯 Режим категорий</span>
                 </label>
 
-                <label class="toggle-switch">
-                    <input type="checkbox" id="autoCheckToggle">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">🔍 Автопроверка после применения</span>
-                </label>
             </div>
 
             <div class="control-group" id="projectsControlGroup">
@@ -1216,22 +1252,6 @@
                 localStorage.setItem('proZvon_templatesPerSetting', tmplToggle.checked ? '1' : '0');
                 updateProjectsOrCategoryUI();
                 updateGlobalProjectControlsVisibility();
-            });
-        }
-
-        // Инициализация состояния autoCheckToggle из localStorage
-        const savedAutoCheck = localStorage.getItem('proZvon_autoCheck');
-        if (savedAutoCheck !== null) {
-            const saved = savedAutoCheck === '1';
-            const tgl = document.getElementById('autoCheckToggle');
-            if (tgl) tgl.checked = saved;
-        }
-
-        // Обработчик изменения autoCheckToggle
-        const autoCheckToggle = document.getElementById('autoCheckToggle');
-        if (autoCheckToggle) {
-            autoCheckToggle.addEventListener('change', () => {
-                localStorage.setItem('proZvon_autoCheck', autoCheckToggle.checked ? '1' : '0');
             });
         }
 
@@ -2099,6 +2119,8 @@
                 return;
             }
 
+            let fullHtml = '';
+
             // Для каждой категории рисуем блок
             for (const [category, info] of categoryResults.entries()) {
                 const safeId = makeSafeId(`cat-${category}`);
@@ -2134,10 +2156,10 @@
                 }
 
                 html += `</div>`;
-                container.innerHTML += html;
+                fullHtml += html;
             }
 
-            // Показываем контейнер
+            container.innerHTML = fullHtml;
             container.style.display = 'block';
 
             // Добавляем панель "Применить к настройкам" (как для поиска по колонкам)
@@ -2179,13 +2201,14 @@
             applySearchContainer.innerHTML = '';
 
             const hasOperators = (results.type === 'flat' && results.data.length > 0) || (results.type === 'grouped' && results.data.size > 0);
+            let contentHtml = '';
 
             if (results.type === 'flat') {
                 if (!hasOperators) {
-                    columnSearchResultsContainer.innerHTML = '<p>Операторы не найдены.</p>';
+                    contentHtml = '<p>Операторы не найдены.</p>';
                 } else {
                     results.data.forEach(op => {
-                        columnSearchResultsContainer.innerHTML += `
+                        contentHtml += `
                         <div class="operator-group-item">
                             <input type="checkbox" class="search-result-checkbox" value="${op}" checked>
                             <label>${op}</label>
@@ -2194,12 +2217,12 @@
                 }
             } else if (results.type === 'grouped') {
                 if (!hasOperators) {
-                    columnSearchResultsContainer.innerHTML = '<p>Операторы не найдены.</p>';
+                    contentHtml = '<p>Операторы не найдены.</p>';
                 } else {
                     const sortedGroups = new Map([...results.data.entries()].sort());
                     sortedGroups.forEach((operators, groupKey) => {
                         const groupId = makeSafeId(`group-${groupKey}`);
-                        const groupHtml = `
+                        contentHtml += `
                         <div class="operator-group">
                             <div class="operator-group-header" data-target="${groupId}">
                                 <span>Колонки: ${groupKey} (${operators.length})</span>
@@ -2215,10 +2238,11 @@
                             </div>
                         </div>
                     `;
-                        columnSearchResultsContainer.innerHTML += groupHtml;
                     });
                 }
             }
+
+            columnSearchResultsContainer.innerHTML = contentHtml;
 
             if (!hasOperators) {
                 applySearchContainer.style.display = 'none';
@@ -2719,8 +2743,9 @@
             });
         }
 
-        // Глобальная переменная для хранения отсутствующих доступов
+        // Глобальные переменные для хранения отсутствующих доступов и последнего применения
         let missingAccesses = [];
+        let lastAppliedData = null; // Сохраняем данные последнего применения для проверки
 
         // Функция для обновления прогресса применения доступов
         function updateProgress(current, total) {
@@ -2784,8 +2809,15 @@
                 window.location.href = selectedLinks[0];
 
             } else {
-                // --- ЛОГИКА НОВОЙ ВЕРСИИ (API) ---
+                // --- ЛОГИКА НОВОЙ ВЕРСИИ (СЕРВЕР) ---
+                // ПОЛНОСТЬЮ КОПИРУЕМ ЛОГИКУ ИЗ ОРИГИНАЛЬНОГО СКРИПТА PROZVON.JS
                 const settings = GM_getValue(swap);
+                const serverUrl = getServerUrl();
+
+                if (!serverUrl) {
+                    alert("❌ Сервер не настроен!\n\nОткройте меню Tampermonkey → '🌐 Настроить адрес сервера' и введите зашифрованный URL от администратора.");
+                    return;
+                }
 
                 if (!settings || !settings.encryptedKey || !settings.secret) {
                     alert("Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.");
@@ -2801,6 +2833,7 @@
                     return;
                 }
 
+                // ТОЧНАЯ КОПИЯ ЛОГИКИ ИЗ PROZVON.JS (строки 2800-2950)
                 const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
                     .map(cb => ({
                         subdomain: cb.value,
@@ -2882,132 +2915,122 @@
                 }
 
                 const confirmButton = document.getElementById('confirmButton');
-                document.getElementById('progressContainer').style.display = 'block';
+                const logDiv = document.getElementById('progressContainer');
+
+                logDiv.style.display = 'block';
                 confirmButton.disabled = true;
-                confirmButton.textContent = 'Обработка...';
+                confirmButton.textContent = 'Отправка...';
 
-                const tasks = [];
-                const operatorsByDomain = {};
+                // Формируем payload В ТОЧНОСТИ как в оригинальном скрипте
+                const payload = {
+                    token: top,
+                    selectedProjects: selectedProjects,
+                    blocksData: blocksData,
+                    use15Columns: use15Columns,
+                    templatesPerSetting: templatesPerSetting,
+                    perBlockProjects: perBlockProjects
+                };
 
-                // Соберём список всех уникальных проектов, по которым нужно работать
-                const allProjectsToFetch = new Map(); // subdomain -> {subdomain, name}
-                if (templatesPerSetting) {
-                    perBlockProjects.forEach(blockInfo => {
-                        if (blockInfo.hasCategory) {
-                            // Используем только проекты категории
-                            blockInfo.projects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                // Логируем данные перед отправкой
+                console.log('[CLIENT] Sending payload:', {
+                    projects: selectedProjects.length,
+                    blocks: blocksData.length,
+                    use15Columns: use15Columns,
+                    templatesPerSetting: templatesPerSetting,
+                    blocksData: blocksData.map(b => ({
+                        columns: b.columns,
+                        users: b.users,
+                        action: b.action
+                    }))
+                });
+
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: `${serverUrl}/api/process-access`,
+                    headers: { "Content-Type": "application/json" },
+                    data: JSON.stringify(payload),
+                    onload: function(response) {
+                        if (response.status === 200) {
+                            const res = JSON.parse(response.responseText);
+                            const taskId = res.taskId;
+                            logDiv.innerHTML = `<div style="padding:10px; color:#0066cc; font-weight:bold; text-align:center;">⏳ Задача выполняется... ID: ${taskId}</div>`;
+
+                            // Запрашиваем разрешение на уведомления
+                            if (Notification.permission === "default") {
+                                Notification.requestPermission();
+                            }
+
+                            // Используем polling вместо SSE для избежания блокировки смешанного контента
+                            const pollInterval = setInterval(() => {
+                                GM_xmlhttpRequest({
+                                    method: "GET",
+                                    url: `${serverUrl}/api/task-status/${taskId}`,
+                                    onload: function(pollResponse) {
+                                        if (pollResponse.status === 200) {
+                                            const data = JSON.parse(pollResponse.responseText);
+
+                                            if (data.type === 'pending') {
+                                                // Задача еще выполняется
+                                                return;
+                                            }
+
+                                            // Останавливаем polling
+                                            clearInterval(pollInterval);
+                                            confirmButton.disabled = false;
+                                            confirmButton.textContent = 'Применить';
+
+                                            if (data.type === 'completed') {
+                                                const successRate = ((data.success / data.total) * 100).toFixed(1);
+
+                                                // Просто меняем сообщение на галочку
+                                                logDiv.innerHTML = `<div style="padding:10px; color:#4caf50; font-weight:bold; text-align:center;">✅ Задача выполнена (${successRate}% успешно)</div>`;
+
+                                                // Показываем уведомление
+                                                if (Notification.permission === "granted") {
+                                                    new Notification("Задача завершена!", {
+                                                        body: `Успешно: ${data.success}/${data.total} (${successRate}%)`,
+                                                        icon: "https://leadvertex.ru/favicon.ico"
+                                                    });
+                                                }
+                                            } else if (data.type === 'error') {
+                                                logDiv.innerHTML = `<div style="padding:10px; color:red; font-weight:bold; text-align:center;">❌ Ошибка: ${data.error}</div>`;
+                                            }
+                                        }
+                                    },
+                                    onerror: function(err) {
+                                        console.error('[POLLING] Request error:', err);
+                                        // Не останавливаем polling при ошибке - продолжаем попытки
+                                    }
+                                });
+                            }, 2000); // Проверяем каждые 2 секунды
                         } else {
-                            // Нет категории — используем глобальные выбранные проекты
-                            selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
+                            confirmButton.disabled = false;
+                            confirmButton.textContent = 'Применить';
+                            logDiv.innerHTML = `<div style="padding:10px; color:red; text-align:center;">❌ Ошибка сервера: ${response.status}</div>`;
+                            alert(`Ошибка сервера: ${response.responseText}`);
                         }
-                    });
-                } else {
-                    // Без per-setting mode — всегда глобальные selectedProjects
-                    selectedProjects.forEach(p => allProjectsToFetch.set(p.subdomain, p));
-                }
-
-                // Получаем операторов для всех используемых доменов (параллельно, с лимитом)
-                const fetchFns = Array.from(allProjectsToFetch.values()).map(project => {
-                    return async () => {
-                        const subdomain = project.subdomain;
-                        try {
-                            operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
-                        } catch (error) {
-                            console.error(`Ошибка получения операторов для ${subdomain}:`, error);
-                            operatorsByDomain[subdomain] = null;
-                        }
-                    };
-                });
-
-                await runWithConcurrency(fetchFns, CONCURRENT_LIMIT_APPLY);
-
-                // Построим задачи: для каждой настройки — по её списку проектов (или по глобальным, если список пуст)
-                for (let i = 0; i < blocksData.length; i++) {
-                    const blockData = blocksData[i];
-                    const { columns, users, action } = blockData;
-
-                    let projectsForBlock = selectedProjects;
-                    if (templatesPerSetting && perBlockProjects[i]) {
-                        if (perBlockProjects[i].hasCategory) {
-                            projectsForBlock = perBlockProjects[i].projects;
-                            if (projectsForBlock.length === 0) {
-                                continue;
-                            }
-                        }
+                    },
+                    onerror: function(err) {
+                        confirmButton.disabled = false;
+                        confirmButton.textContent = 'Применить';
+                        logDiv.innerHTML = `<div style="padding:10px; color:red; text-align:center;">❌ Ошибка сети. Проверьте адрес сервера.</div>`;
+                        console.error(err);
+                        alert('Не удалось соединиться с сервером. Проверьте, запущен ли он и правильно ли указан адрес.');
                     }
-
-                        for (const project of projectsForBlock) {
-                            const { subdomain, name } = project;
-                            const operators = operatorsByDomain[subdomain];
-                            if (!operators) continue;
-
-                            const loginToIds = {};
-                            for (const [id, login] of Object.entries(operators)) {
-                                const key = (login || '').toLowerCase();
-                                if (!loginToIds[key]) loginToIds[key] = [];
-                                loginToIds[key].push(id);
-                            }
-
-                            let operatorIds = [];
-                            if (users.includes("all")) {
-                                operatorIds = Object.keys(operators);
-                            } else {
-                                for (const user of users) {
-                                    const key = user.toLowerCase();
-                                    if (loginToIds[key]) operatorIds.push(...loginToIds[key]);
-                                }
-                            }
-
-                            // Дедуп и push задач
-                            const uniqueOpIds = Array.from(new Set(operatorIds));
-                            for (const operatorId of uniqueOpIds) {
-                                const operatorLogin = operators[operatorId];
-                                for (const column of columns) {
-                                    const { group, type } = columnMap[column];
-                                    tasks.push(() => setOperatorRule(subdomain, top, operatorId, group, type, action).catch(error => {
-                                        // Тихо игнорируем ошибки
-                                    }));
-                                }
-                            }
-                        }
-                }
-
-                const totalOperations = tasks.length;
-                let completedOperations = 0;
-                updateProgress(0, totalOperations);
-
-                // Выполним задачи с ограниченным параллелизмом и обновлением прогресса
-                const wrappedTasks = tasks.map(fn => async () => {
-                    await fn();
-                    completedOperations++;
-                    updateProgress(completedOperations, totalOperations);
                 });
 
-                await runWithConcurrency(wrappedTasks, CONCURRENT_LIMIT_APPLY);
-
-                // Все задачи выполнены
-                confirmButton.disabled = false;
-                confirmButton.textContent = 'Применить';
-
-                // Показываем кнопку проверки после применения
-                document.getElementById('checkAccessButton').style.display = 'block';
-
-                // Проверяем, включена ли автопроверка
-                const autoCheck = document.getElementById('autoCheckToggle')?.checked;
-
-                if (autoCheck) {
-                    // Автоматически запускаем проверку
-                    setTimeout(() => {
-                        document.getElementById('checkAccessButton').click();
-                    }, 500);
-                } else {
-                    alert('Доступы применены! Теперь вы можете проверить их наличие.');
-                }
+                return; // Stop execution here
             }
         });
 
         // Обработчик кнопки проверки доступов
         document.getElementById('checkAccessButton').addEventListener('click', async () => {
+            // Проверяем, есть ли сохранённые данные применения
+            if (!lastAppliedData) {
+                alert("Сначала примените доступы, затем проверьте их.");
+                return;
+            }
+
             const settings = GM_getValue(swap);
             if (!settings || !settings.encryptedKey || !settings.secret) {
                 alert("Параметры доступа не найдены.");
@@ -3023,77 +3046,8 @@
                 return;
             }
 
-            const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
-                .map(cb => ({
-                    subdomain: cb.value,
-                    name: cb.dataset.projectName || cb.value
-                }));
-
-            const use15Columns = document.getElementById('columnRangeToggle').checked;
-            const columnMap = use15Columns ? columnMap15 : columnMap9;
-            const allColumns = Object.keys(columnMap).map(Number);
-
-            if (!selectedProjects.length) {
-                alert("Выберите хотя бы один проект.");
-                return;
-            }
-
-            const fieldBlocks = document.querySelectorAll('.field-block');
-            const blocksData = Array.from(fieldBlocks).map(block => {
-                const columnsInput = block.querySelector('.columnsInput').value.trim().toLowerCase();
-                let columns;
-
-                if (columnsInput === 'all') {
-                    columns = allColumns;
-                } else {
-                    columns = columnsInput.split(' ').map(Number).filter(Boolean);
-                }
-
-                return {
-                    columns: columns,
-                    users: block.querySelector('.usersInput').value.trim().split('\n').map(user => user.trim()).filter(Boolean),
-                    action: block.querySelector('.actionSelect').value
-                };
-            });
-
-            const templatesPerSetting = document.getElementById('templatesPerSettingToggle')?.checked;
-            const perBlockProjects = [];
-
-            if (templatesPerSetting) {
-                Array.from(fieldBlocks).forEach(block => {
-                    const catSel = block.querySelector('.categorySelect');
-                    if (catSel && catSel.value) {
-                        const cat = catSel.value;
-                        let fragments = projectCategories.get(cat) || [];
-                        if (fragments.length === 0) {
-                            fragments = [cat];
-                        }
-
-                        const matched = [];
-                        const allProjectItems = document.querySelectorAll('#namesList .project-item');
-
-                        allProjectItems.forEach(item => {
-                            const cb = item.querySelector('input[type="checkbox"]');
-                            const label = item.querySelector('.project-name');
-                            if (!cb || !label) return;
-                            const pname = label.textContent.trim().toLowerCase();
-                            const sub = cb.value.toLowerCase();
-                            const isMatch = fragments.some(f => {
-                                const fLower = f.toLowerCase().trim();
-                                return pname === fLower || sub === fLower;
-                            });
-
-                            if (isMatch) {
-                                matched.push({ subdomain: cb.value, name: label.textContent.trim() });
-                            }
-                        });
-
-                        perBlockProjects.push({ projects: matched, hasCategory: true });
-                    } else {
-                        perBlockProjects.push({ projects: [], hasCategory: false });
-                    }
-                });
-            }
+            // Используем сохранённые данные применения вместо текущих значений из UI
+            const { selectedProjects, blocksData, columnMap, templatesPerSetting, perBlockProjects, operatorsByDomain: savedOperators } = lastAppliedData;
 
             const checkAccessButton = document.getElementById('checkAccessButton');
             checkAccessButton.disabled = true;
@@ -3105,34 +3059,9 @@
 
             // Собираем список проверок
             missingAccesses = [];
-            const allProjectsToCheck = new Map();
 
-            if (templatesPerSetting) {
-                perBlockProjects.forEach(blockInfo => {
-                    if (blockInfo.hasCategory) {
-                        blockInfo.projects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
-                    } else {
-                        selectedProjects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
-                    }
-                });
-            } else {
-                selectedProjects.forEach(p => allProjectsToCheck.set(p.subdomain, p));
-            }
-
-            const operatorsByDomain = {};
-            const fetchFns = Array.from(allProjectsToCheck.values()).map(project => {
-                return async () => {
-                    const subdomain = project.subdomain;
-                    try {
-                        operatorsByDomain[subdomain] = await getActiveOperators(subdomain, top);
-                    } catch (error) {
-                        // Тихо игнорируем ошибки
-                        operatorsByDomain[subdomain] = null;
-                    }
-                };
-            });
-
-            await runWithConcurrency(fetchFns, CONCURRENT_LIMIT_CHECK);
+            // Используем уже загруженных операторов из сохранённых данных
+            const operatorsByDomain = savedOperators;
 
             // Собираем все задачи проверки сразу для максимального параллелизма
             const allCheckTasks = [];
