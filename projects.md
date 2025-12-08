@@ -53,7 +53,6 @@ Voxys
 Гипертония	normotonics
 Гипертония	otmena-otmen
 Гипертония	otmeny
-Гипертония	parasit-zhkt-dz-cpa
 Гипертония	recebido-ao
 Гипертония	valeocard-ao
 Гипертония	valeocard-dz
