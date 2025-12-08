@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.14.0
+// @version      2.14.2
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -17,6 +17,7 @@
 (function () {
     'use strict';
 
+    // AES-256 расшифровка URL сервера
     const SERVER_URL_KEY = "accessServerUrl_encrypted";
     const ENCRYPTION_KEY_STORAGE = "accessServerEncryptionKey";
 
@@ -52,6 +53,8 @@
         // Проверяем расшифровку
         const decrypted = decryptServerUrl(encryptedUrl, encryptionKey);
         if (decrypted) {
+            GM_setValue(SERVER_URL_KEY, encryptedUrl);
+            GM_setValue(ENCRYPTION_KEY_STORAGE, encryptionKey);
             alert(`✅ Сервер успешно настроен!`);
         } else {
             alert('❌ Ошибка расшифровки!\n\nПроверьте правильность зашифрованного URL и ключа шифрования.');
