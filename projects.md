@@ -205,6 +205,7 @@ Voxys
 Похудение	liporeduct-full-dz
 Похудение	liporeduct-tee-ao
 Похудение	liporeduct-tee-ao-cpa
+Похудение	ao-vita-slim-cpa
 Похудение	nedozvony-ru
 Похудение	otmena-otmen
 Похудение	otmeny
