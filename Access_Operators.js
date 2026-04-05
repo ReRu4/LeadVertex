@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автоматизация настроек доступа 🔍
 // @namespace    http://tampermonkey.net/
-// @version      2.14.2
+// @version      2.14.4
 // @description  Проставление доступа по операторам в режиме прозвона
 // @author       ReRu (@Ruslan_Intertrade)
 // @match        *://leadvertex.ru/admin/callmodeNew/settings.html?category=*
@@ -64,6 +64,447 @@
     const CONCURRENT_LIMIT_APPLY = 100; // Количество одновременных запросов при проставлении
     const CONCURRENT_LIMIT_CHECK = 100; // Количество одновременных запросов при проверке
     const swap = "accessConfig";
+    const LANGUAGE_KEY = "proZvon_language";
+
+    // === СИСТЕМА ЛОКАЛИЗАЦИИ ===
+    const translations = {
+        ru: {
+            setupParams: '🔑 Установить параметры',
+            removeParams: '⚠️ Удалить параметры',
+            selectLanguage: '🌐 Выбрать язык',
+            step1Token: 'Шаг 1/2: Введите ваш токен доступа:',
+            step2Key: 'Шаг 2/2: Введите ключ для расшифровки (секретную фразу):',
+            cancelledNoKey: 'Установка отменена, так как не был введен ключ для расшифровки.',
+            areYouSure: 'Вы уверены, что хотите удалить параметры доступа?',
+            initScript: 'Инициализация скрипта',
+            errorParsingProjects: 'Ошибка парсинга данных проектов:',
+            errorLoadingProjects: 'Ошибка загрузки данных проектов:',
+            networkErrorProjects: 'Сетевая ошибка при загрузке данных проектов:',
+            panelTitle: 'Настройка доступа',
+            oldMode: '⚡ Старый режим',
+            use15Columns: '📊 Использовать 15 колонок',
+            categoryMode: '🎯 Режим категорий',
+            selectTables: 'Выберите таблицы:',
+            showProjects: '📋 Показать проекты',
+            hideProjects: '📂 Скрыть проекты',
+            selectAll: '✓ Выбрать все',
+            deselectAll: '✕ Снять все',
+            useTemplate: 'Использовать шаблон:',
+            chooseTemplate: 'Выберите шаблон',
+            nightGuards: 'Шаблон ночников',
+            traineesTemplate: 'Стажёры DZ',
+            accessSettings: 'Настройки доступа:',
+            setting: 'Настройка #',
+            columns: 'Колонки (через пробел):',
+            example: 'Например: 1 2 3',
+            operators: 'Операторы:',
+            onePerLine: 'По одному оператору на строку',
+            action: 'Действие:',
+            enableAccess: 'Включить доступ',
+            disableAccess: 'Отключить доступ',
+            category: 'Категория (шаблон):',
+            notSelected: '(не выбрано)',
+            addField: '+ Добавить поле настроек',
+            processed: 'Обработано:',
+            checked: 'Проверено:',
+            apply: 'Применить',
+            checkAccess: '🔍 Проверить доступы',
+            applyMissing: '✅ Проставить оставшиеся',
+            close: '✕',
+            search: 'Поиск',
+            operatorsList: 'Список операторов',
+            columnsList: 'Список колонок',
+            searchByCategories: 'Поиск по категориям',
+            columnNumbers: 'Номера колонок',
+            leaveEmpty: 'Оставьте пустым для группировки',
+            find: 'Найти',
+            searching: 'Поиск...',
+            applyToSettings: 'Применить к настройкам:',
+            selectAllSettings: 'Выбрать все',
+            applySelected: 'Применить выбранным',
+            resultsNotFound: 'Операторы не найдены.',
+            noAccess: 'Нет доступов в выбранных проектах.',
+            columns_word: 'Колонки:',
+            checkResults: 'Результаты проверки:',
+            allAccessOk: '✅ Все доступы проставлены корректно!',
+            missingAccesses: '⚠️ Найдено',
+            missingAccessesWord: 'отсутствующих доступов:',
+            missingColumns: 'Отсутствуют колонки:',
+            notFoundIn: 'Не найден в проектах:',
+            selectOperators: 'Выберите хотя бы одного оператора в результатах поиска для применения.',
+            selectSettingsToApply: 'Выберите хотя бы одну настройку для применения.',
+            appliedToSettings: 'Применено к',
+            settingsWord: 'настройкам.',
+            enterOperators: 'Введите хотя бы одного оператора для поиска.',
+            selectProjects: 'Сначала выберите проекты на основной панели.',
+            selectParams: 'Сначала примените доступы, затем проверьте их.',
+            noAccessesForMissing: 'Нет отсутствующих доступов для проставления.',
+            checking: 'Проверка...',
+            applying: 'Проставляем...',
+            checkingComplete: '✅ Все отсутствующие доступы успешно проставлены!',
+            selectProject: 'Выберите хотя бы один проект.',
+            fillAllFields: 'Заполните все поля колонок и операторов.',
+            processing: 'Обработка...',
+            langRu: 'Русский',
+            langEn: 'English',
+            langFr: 'Français',
+            langPt: 'Português',
+            settingsNotFound: 'Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.',
+            decryptError: 'Ошибка при расшифровке токена:',
+            pasteTemplate: 'Вставьте шаблон (пример в документации)',
+            applyBtn: 'Применить',
+            cancelBtn: 'Отмена',
+            errorParsingTemplate: 'Ошибка разбора шаблона:',
+            settingFor: 'Настройка для категории:',
+            all: 'all',
+            useAllColumns: 'Введите "all" для выбора всех колонок',
+            useAllOperators: 'Введите "all" для выбора всех операторов',
+            nightTemplate: 'Шаблон ночников',
+            templateForCategory: 'Настройка для категории:',
+            processingComplete: 'Обработка завершена.',
+            parametersNotSet: 'Параметры не заданы',
+            projectsForSetting: 'Проекты для этой настройки (опционально):',
+            category_search: 'Категория',
+            projects_count: 'Проектов:',
+            groupingKey: 'Колонки:',
+            noOperatorsInCategory: 'Операторы не найдены.',
+            operatorColumnsAccess: 'Оператор:',
+            noAccessInProjects: 'Нет доступов в выбранных проектах.',
+            foundInProjects: 'Найден в проектах:',
+            notFoundInProjects: 'Не найден в проектах:',
+            categoryNotFound: 'Операторы не найдены в выбранных категориях.',
+            successApplied: 'успешно применены!',
+        },
+        en: {
+            setupParams: '🔑 Set up parameters',
+            removeParams: '⚠️ Delete parameters',
+            selectLanguage: '🌐 Select language',
+            step1Token: 'Step 1/2: Enter your access token:',
+            step2Key: 'Step 2/2: Enter decryption key (secret phrase):',
+            cancelledNoKey: 'Setup cancelled because no decryption key was entered.',
+            areYouSure: 'Are you sure you want to delete access parameters?',
+            initScript: 'Script initialization',
+            errorParsingProjects: 'Error parsing project data:',
+            errorLoadingProjects: 'Error loading project data:',
+            networkErrorProjects: 'Network error loading project data:',
+            panelTitle: 'Access settings',
+            oldMode: '⚡ Legacy mode',
+            use15Columns: '📊 Use 15 columns',
+            categoryMode: '🎯 Category mode',
+            selectTables: 'Select tables:',
+            showProjects: '📋 Show projects',
+            hideProjects: '📂 Hide projects',
+            selectAll: '✓ Select all',
+            deselectAll: '✕ Deselect all',
+            useTemplate: 'Use template:',
+            chooseTemplate: 'Choose template',
+            nightGuards: 'Night guards template',
+            traineesTemplate: 'Trainees DZ',
+            accessSettings: 'Access settings:',
+            setting: 'Setting #',
+            columns: 'Columns (space separated):',
+            example: 'Example: 1 2 3',
+            operators: 'Operators:',
+            onePerLine: 'One operator per line',
+            action: 'Action:',
+            enableAccess: 'Enable access',
+            disableAccess: 'Disable access',
+            category: 'Category (template):',
+            notSelected: '(not selected)',
+            addField: '+ Add settings field',
+            processed: 'Processed:',
+            checked: 'Checked:',
+            apply: 'Apply',
+            checkAccess: '🔍 Check access',
+            applyMissing: '✅ Apply missing',
+            close: '✕',
+            search: 'Search',
+            operatorsList: 'Operators list',
+            columnsList: 'Columns list',
+            searchByCategories: 'Search by categories',
+            columnNumbers: 'Column numbers',
+            leaveEmpty: 'Leave empty for grouping',
+            find: 'Find',
+            searching: 'Searching...',
+            applyToSettings: 'Apply to settings:',
+            selectAllSettings: 'Select all',
+            applySelected: 'Apply selected',
+            resultsNotFound: 'Operators not found.',
+            noAccess: 'No access in selected projects.',
+            columns_word: 'Columns:',
+            checkResults: 'Check results:',
+            allAccessOk: '✅ All access is set correctly!',
+            missingAccesses: '⚠️ Found',
+            missingAccessesWord: 'missing access:',
+            missingColumns: 'Missing columns:',
+            notFoundIn: 'Not found in projects:',
+            selectOperators: 'Select at least one operator from search results to apply.',
+            selectSettingsToApply: 'Select at least one setting to apply.',
+            appliedToSettings: 'Applied to',
+            settingsWord: 'settings.',
+            enterOperators: 'Enter at least one operator to search.',
+            selectProjects: 'First select projects in the main panel.',
+            selectParams: 'First apply access, then check it.',
+            noAccessesForMissing: 'No missing access to apply.',
+            checking: 'Checking...',
+            applying: 'Applying...',
+            checkingComplete: '✅ All missing access has been successfully applied!',
+            selectProject: 'Select at least one project.',
+            fillAllFields: 'Fill in all columns and operators fields.',
+            processing: 'Processing...',
+            langRu: 'Русский',
+            langEn: 'English',
+            langFr: 'Français',
+            langPt: 'Português',
+            settingsNotFound: 'Access parameters or decryption key not found. Please set them through the Tampermonkey menu.',
+            decryptError: 'Error decrypting token:',
+            pasteTemplate: 'Paste template (example in documentation)',
+            applyBtn: 'Apply',
+            cancelBtn: 'Cancel',
+            errorParsingTemplate: 'Error parsing template:',
+            settingFor: 'Setting for category:',
+            all: 'all',
+            useAllColumns: 'Enter "all" to select all columns',
+            useAllOperators: 'Enter "all" to select all operators',
+            nightTemplate: 'Night guards template',
+            templateForCategory: 'Setting for category:',
+            processingComplete: 'Processing completed.',
+            parametersNotSet: 'Parameters not set',
+            projectsForSetting: 'Projects for this setting (optional):',
+            category_search: 'Category',
+            projects_count: 'Projects:',
+            groupingKey: 'Columns:',
+            noOperatorsInCategory: 'Operators not found.',
+            operatorColumnsAccess: 'Operator:',
+            noAccessInProjects: 'No access in selected projects.',
+            foundInProjects: 'Found in projects:',
+            notFoundInProjects: 'Not found in projects:',
+            categoryNotFound: 'Operators not found in selected categories.',
+            successApplied: 'successfully applied!',
+        },
+        fr: {
+            setupParams: '🔑 Paramètres d\'installation',
+            removeParams: '⚠️ Supprimer les paramètres',
+            selectLanguage: '🌐 Sélectionner la langue',
+            step1Token: 'Étape 1/2 : Entrez votre jeton d\'accès :',
+            step2Key: 'Étape 2/2 : Entrez la clé de déchiffrement (phrase secrète) :',
+            cancelledNoKey: 'Configuration annulée car aucune clé de déchiffrement n\'a été saisie.',
+            areYouSure: 'Êtes-vous sûr de vouloir supprimer les paramètres d\'accès ?',
+            initScript: 'Initialisation du script',
+            errorParsingProjects: 'Erreur d\'analyse des données de projet :',
+            errorLoadingProjects: 'Erreur de chargement des données de projet :',
+            networkErrorProjects: 'Erreur réseau lors du chargement des données de projet :',
+            panelTitle: 'Paramètres d\'accès',
+            oldMode: '⚡ Mode hérité',
+            use15Columns: '📊 Utiliser 15 colonnes',
+            categoryMode: '🎯 Mode catégorie',
+            selectTables: 'Sélectionnez les tableaux :',
+            showProjects: '📋 Afficher les projets',
+            hideProjects: '📂 Masquer les projets',
+            selectAll: '✓ Sélectionner tout',
+            deselectAll: '✕ Désélectionner tout',
+            useTemplate: 'Utiliser le modèle :',
+            chooseTemplate: 'Choisir un modèle',
+            nightGuards: 'Modèle gardes de nuit',
+            traineesTemplate: 'Stagiaires DZ',
+            accessSettings: 'Paramètres d\'accès :',
+            setting: 'Paramètre #',
+            columns: 'Colonnes (séparées par un espace) :',
+            example: 'Exemple : 1 2 3',
+            operators: 'Opérateurs :',
+            onePerLine: 'Un opérateur par ligne',
+            action: 'Action :',
+            enableAccess: 'Activer l\'accès',
+            disableAccess: 'Désactiver l\'accès',
+            category: 'Catégorie (modèle) :',
+            notSelected: '(non sélectionné)',
+            addField: '+ Ajouter un champ de paramètres',
+            processed: 'Traité :',
+            checked: 'Vérifié :',
+            apply: 'Appliquer',
+            checkAccess: '🔍 Vérifier l\'accès',
+            applyMissing: '✅ Appliquer les manquants',
+            close: '✕',
+            search: 'Recherche',
+            operatorsList: 'Liste des opérateurs',
+            columnsList: 'Liste des colonnes',
+            searchByCategories: 'Rechercher par catégories',
+            columnNumbers: 'Numéros de colonne',
+            leaveEmpty: 'Laissez vide pour le regroupement',
+            find: 'Trouver',
+            searching: 'Recherche en cours...',
+            applyToSettings: 'Appliquer aux paramètres :',
+            selectAllSettings: 'Sélectionner tout',
+            applySelected: 'Appliquer la sélection',
+            resultsNotFound: 'Opérateurs non trouvés.',
+            noAccess: 'Pas d\'accès dans les projets sélectionnés.',
+            columns_word: 'Colonnes :',
+            checkResults: 'Résultats de la vérification :',
+            allAccessOk: '✅ Tous les accès ont été définis correctement !',
+            missingAccesses: '⚠️ Trouvé',
+            missingAccessesWord: 'accès manquants :',
+            missingColumns: 'Colonnes manquantes :',
+            notFoundIn: 'Non trouvé dans les projets :',
+            selectOperators: 'Sélectionnez au moins un opérateur dans les résultats de recherche à appliquer.',
+            selectSettingsToApply: 'Sélectionnez au moins un paramètre à appliquer.',
+            appliedToSettings: 'Appliqué à',
+            settingsWord: 'paramètres.',
+            enterOperators: 'Entrez au moins un opérateur pour rechercher.',
+            selectProjects: 'Sélectionnez d\'abord les projets dans le panneau principal.',
+            selectParams: 'Commencez par appliquer l\'accès, puis vérifiez-le.',
+            noAccessesForMissing: 'Pas d\'accès manquant à appliquer.',
+            checking: 'Vérification en cours...',
+            applying: 'Demande en cours...',
+            checkingComplete: '✅ Tous les accès manquants ont été appliqués avec succès !',
+            selectProject: 'Sélectionnez au moins un projet.',
+            fillAllFields: 'Remplissez tous les champs de colonnes et d\'opérateurs.',
+            processing: 'Traitement en cours...',
+            langRu: 'Русский',
+            langEn: 'English',
+            langFr: 'Français',
+            langPt: 'Português',
+            settingsNotFound: 'Paramètres d\'accès ou clé de déchiffrement non trouvés. Veuillez les définir via le menu Tampermonkey.',
+            decryptError: 'Erreur lors du déchiffrement du jeton :',
+            pasteTemplate: 'Coller le modèle (exemple dans la documentation)',
+            applyBtn: 'Appliquer',
+            cancelBtn: 'Annuler',
+            errorParsingTemplate: 'Erreur d\'analyse du modèle :',
+            settingFor: 'Paramètre pour la catégorie :',
+            all: 'all',
+            useAllColumns: 'Entrez « all » pour sélectionner toutes les colonnes',
+            useAllOperators: 'Entrez « all » pour sélectionner tous les opérateurs',
+            nightTemplate: 'Modèle gardes de nuit',
+            templateForCategory: 'Paramètre pour la catégorie :',
+            processingComplete: 'Traitement terminé.',
+            parametersNotSet: 'Paramètres non définis',
+            projectsForSetting: 'Projets pour ce paramètre (facultatif) :',
+            category_search: 'Catégorie',
+            projects_count: 'Projets :',
+            groupingKey: 'Colonnes :',
+            noOperatorsInCategory: 'Opérateurs non trouvés.',
+            operatorColumnsAccess: 'Opérateur :',
+            noAccessInProjects: 'Pas d\'accès dans les projets sélectionnés.',
+            foundInProjects: 'Trouvé dans les projets :',
+            notFoundInProjects: 'Non trouvé dans les projets :',
+            categoryNotFound: 'Opérateurs non trouvés dans les catégories sélectionnées.',
+            successApplied: 'appliqués avec succès !',
+        },
+        pt: {
+            setupParams: '🔑 Definir parâmetros',
+            removeParams: '⚠️ Excluir parâmetros',
+            selectLanguage: '🌐 Selecionar idioma',
+            step1Token: 'Passo 1/2: Digite seu token de acesso:',
+            step2Key: 'Passo 2/2: Digite a chave de descriptografia (frase secreta):',
+            cancelledNoKey: 'Configuração cancelada porque nenhuma chave de descriptografia foi inserida.',
+            areYouSure: 'Tem certeza de que deseja excluir os parâmetros de acesso?',
+            initScript: 'Inicialização do script',
+            errorParsingProjects: 'Erro ao analisar dados do projeto:',
+            errorLoadingProjects: 'Erro ao carregar dados do projeto:',
+            networkErrorProjects: 'Erro de rede ao carregar dados do projeto:',
+            panelTitle: 'Configurações de acesso',
+            oldMode: '⚡ Modo legado',
+            use15Columns: '📊 Usar 15 colunas',
+            categoryMode: '🎯 Modo categoria',
+            selectTables: 'Selecione tabelas:',
+            showProjects: '📋 Mostrar projetos',
+            hideProjects: '📂 Ocultar projetos',
+            selectAll: '✓ Selecionar tudo',
+            deselectAll: '✕ Desselecionar tudo',
+            useTemplate: 'Usar modelo:',
+            chooseTemplate: 'Escolher modelo',
+            nightGuards: 'Modelo de guarda noturno',
+            traineesTemplate: 'Estagiários DZ',
+            accessSettings: 'Configurações de acesso:',
+            setting: 'Configuração #',
+            columns: 'Colunas (separadas por espaço):',
+            example: 'Exemplo: 1 2 3',
+            operators: 'Operadores:',
+            onePerLine: 'Um operador por linha',
+            action: 'Ação:',
+            enableAccess: 'Ativar acesso',
+            disableAccess: 'Desativar acesso',
+            category: 'Categoria (modelo):',
+            notSelected: '(não selecionado)',
+            addField: '+ Adicionar campo de configuração',
+            processed: 'Processado:',
+            checked: 'Verificado:',
+            apply: 'Aplicar',
+            checkAccess: '🔍 Verificar acesso',
+            applyMissing: '✅ Aplicar ausentes',
+            close: '✕',
+            search: 'Pesquisa',
+            operatorsList: 'Lista de operadores',
+            columnsList: 'Lista de colunas',
+            searchByCategories: 'Pesquisar por categorias',
+            columnNumbers: 'Números de coluna',
+            leaveEmpty: 'Deixe em branco para agrupamento',
+            find: 'Encontrar',
+            searching: 'Pesquisando...',
+            applyToSettings: 'Aplicar às configurações:',
+            selectAllSettings: 'Selecionar tudo',
+            applySelected: 'Aplicar selecionado',
+            resultsNotFound: 'Operadores não encontrados.',
+            noAccess: 'Sem acesso nos projetos selecionados.',
+            columns_word: 'Colunas:',
+            checkResults: 'Resultados da verificação:',
+            allAccessOk: '✅ Todos os acessos foram definidos corretamente!',
+            missingAccesses: '⚠️ Encontrados',
+            missingAccessesWord: 'acessos ausentes:',
+            missingColumns: 'Colunas ausentes:',
+            notFoundIn: 'Não encontrado nos projetos:',
+            selectOperators: 'Selecione pelo menos um operador nos resultados da pesquisa para aplicar.',
+            selectSettingsToApply: 'Selecione pelo menos uma configuração para aplicar.',
+            appliedToSettings: 'Aplicado a',
+            settingsWord: 'configurações.',
+            enterOperators: 'Digite pelo menos um operador para pesquisar.',
+            selectProjects: 'Primeiro selecione projetos no painel principal.',
+            selectParams: 'Primeiro aplique o acesso e depois verifique-o.',
+            noAccessesForMissing: 'Nenhum acesso ausente para aplicar.',
+            checking: 'Verificando...',
+            applying: 'Aplicando...',
+            checkingComplete: '✅ Todos os acessos ausentes foram aplicados com sucesso!',
+            selectProject: 'Selecione pelo menos um projeto.',
+            fillAllFields: 'Preencha todos os campos de colunas e operadores.',
+            processing: 'Processando...',
+            langRu: 'Русский',
+            langEn: 'English',
+            langFr: 'Français',
+            langPt: 'Português',
+            settingsNotFound: 'Parâmetros de acesso ou chave de descriptografia não encontrados. Defina-os através do menu Tampermonkey.',
+            decryptError: 'Erro ao descriptografar token:',
+            pasteTemplate: 'Colar modelo (exemplo na documentação)',
+            applyBtn: 'Aplicar',
+            cancelBtn: 'Cancelar',
+            errorParsingTemplate: 'Erro ao analisar modelo:',
+            settingFor: 'Configuração para categoria:',
+            all: 'all',
+            useAllColumns: 'Digite "all" para selecionar todas as colunas',
+            useAllOperators: 'Digite "all" para selecionar todos os operadores',
+            nightTemplate: 'Modelo de guarda noturno',
+            templateForCategory: 'Configuração para categoria:',
+            processingComplete: 'Processamento concluído.',
+            parametersNotSet: 'Parâmetros não definidos',
+            projectsForSetting: 'Projetos para esta configuração (opcional):',
+            category_search: 'Categoria',
+            projects_count: 'Projetos:',
+            groupingKey: 'Colunas:',
+            noOperatorsInCategory: 'Operadores não encontrados.',
+            operatorColumnsAccess: 'Operador:',
+            noAccessInProjects: 'Sem acesso nos projetos selecionados.',
+            foundInProjects: 'Encontrado nos projetos:',
+            notFoundInProjects: 'Não encontrado nos projetos:',
+            categoryNotFound: 'Operadores não encontrados nas categorias selecionadas.',
+            successApplied: 'aplicados com sucesso!',
+        }
+    };
+
+    // Получить текущий язык
+    let currentLanguage = localStorage.getItem(LANGUAGE_KEY) || 'ru';
+
+    // Функция для получения переведённой строки
+    function t(key) {
+        return translations[currentLanguage]?.[key] || translations.ru?.[key] || key;
+    }
 
     function decrypt(encrypted, secret) {
         if (!encrypted || !secret) return null;
@@ -74,15 +515,15 @@
         return decrypted;
     }
 
-    GM_registerMenuCommand('🔑 Установить параметры', () => {
-        const encryptedKey = prompt('Шаг 1/2: Введите ваш токен доступа:');
+    GM_registerMenuCommand(t('setupParams'), () => {
+        const encryptedKey = prompt(t('step1Token'));
         if (!encryptedKey) {
             return;
         }
 
-        const secret = prompt('Шаг 2/2: Введите ключ для расшифровки (секретную фразу):');
+        const secret = prompt(t('step2Key'));
         if (!secret) {
-            alert('Установка отменена, так как не был введен ключ для расшифровки.');
+            alert(t('cancelledNoKey'));
             return;
         }
 
@@ -90,9 +531,33 @@
         location.reload();
     });
 
-    GM_registerMenuCommand('⚠️ Удалить параметры', () => {
-        if (confirm('Вы уверены, что хотите удалить параметры доступа?')) {
+    GM_registerMenuCommand(t('removeParams'), () => {
+        if (confirm(t('areYouSure'))) {
             GM_setValue(swap, null);
+            location.reload();
+        }
+    });
+
+    GM_registerMenuCommand(t('selectLanguage'), () => {
+        const languages = {
+            'ru': t('langRu'),
+            'en': t('langEn'),
+            'fr': t('langFr'),
+            'pt': t('langPt')
+        };
+
+        let message = 'Select language / Выберите язык / Sélectionnez la langue / Selecione o idioma:\n\n';
+        message += '1 - ' + languages.ru + '\n';
+        message += '2 - ' + languages.en + '\n';
+        message += '3 - ' + languages.fr + '\n';
+        message += '4 - ' + languages.pt;
+
+        const choice = prompt(message, '1');
+        const langMap = { '1': 'ru', '2': 'en', '3': 'fr', '4': 'pt' };
+
+        if (choice && langMap[choice]) {
+            currentLanguage = langMap[choice];
+            localStorage.setItem(LANGUAGE_KEY, currentLanguage);
             location.reload();
         }
     });
@@ -1020,11 +1485,11 @@
         panel.innerHTML = `
             <div class="panel-header">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <h3 class="panel-title">Настройка доступа</h3>
-                    <button id="showSearchPanelBtn" class="access-button secondary-button" title="Найти операторов" style="padding: 5px 8px; font-size: 12px;">🔍</button>
+                    <h3 class="panel-title">${t('panelTitle')}</h3>
+                    <button id="showSearchPanelBtn" class="access-button secondary-button" title="${t('search')}" style="padding: 5px 8px; font-size: 12px;">🔍</button>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">✕</button>
+                    <button id="closeButton" class="access-button danger-button" style="padding: 5px 8px; font-size: 12px;">${t('close')}</button>
                 </div>
             </div>
 
@@ -1032,99 +1497,98 @@
                 <label class="toggle-switch">
                     <input type="checkbox" id="legacyModeToggle">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">⚡ Старый режим</span>
+                    <span class="toggle-text">${t('oldMode')}</span>
                 </label>
 
                 <label class="toggle-switch">
                     <input type="checkbox" id="columnRangeToggle">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">📊 Использовать 15 колонок</span>
+                    <span class="toggle-text">${t('use15Columns')}</span>
                 </label>
 
                 <label class="toggle-switch">
                     <input type="checkbox" id="templatesPerSettingToggle">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">🎯 Режим категорий</span>
+                    <span class="toggle-text">${t('categoryMode')}</span>
                 </label>
-
             </div>
 
             <div class="control-group" id="projectsControlGroup">
-                <label class="control-label" id="projectsControlLabel">Выберите таблицы:</label>
+                <label class="control-label" id="projectsControlLabel">${t('selectTables')}</label>
                 <button id="toggleButton" class="access-button secondary-button" style="width: 100%; margin-bottom: 8px;">
-                    📋 Показать проекты
+                    ${t('showProjects')}
                 </button>
                 <div class="projects-actions-bar">
-                    <button id="selectAllButton" class="projects-action-btn select-all-btn">✓ Выбрать все</button>
-                    <button id="unselectAllButton" class="projects-action-btn unselect-all-btn">✕ Снять все</button>
+                    <button id="selectAllButton" class="projects-action-btn select-all-btn">${t('selectAll')}</button>
+                    <button id="unselectAllButton" class="projects-action-btn unselect-all-btn">${t('deselectAll')}</button>
                 </div>
                 <div id="namesList" class="projects-list" style="display: none;"></div>
             </div>
 
             <div class="control-group" id="templateControlGroup">
-                <label class="control-label" id="templateControlLabel">Использовать шаблон:</label>
+                <label class="control-label" id="templateControlLabel">${t('useTemplate')}</label>
                 <select id="templateSelect" class="access-select">
-                    <option value="">Выберите шаблон</option>
-                    <option value="template1">Шаблон ночников</option>
-                    <option value="template2">Стажёры DZ</option>
+                    <option value="">${t('chooseTemplate')}</option>
+                    <option value="template1">${t('nightGuards')}</option>
+                    <option value="template2">${t('traineesTemplate')}</option>
                 </select>
             </div>
 
             <div class="control-group">
-                <label class="control-label">Настройки доступа:</label>
+                <label class="control-label">${t('accessSettings')}</label>
                 <div id="fieldsContainer">
                     <div class="field-block mainBlock">
                         <div class="field-block-title">
-                            Настройка #1
+                            ${t('setting')}1
                         </div>
                         <div class="control-group">
-                            <label class="control-label">Колонки (через пробел):</label>
-                            <input type="text" class="columnsInput access-input" placeholder="Например: 1 2 3">
+                            <label class="control-label">${t('columns')}</label>
+                            <input type="text" class="columnsInput access-input" placeholder="${t('example')}">
                         </div>
                         <div class="control-group">
-                            <label class="control-label">Операторы:</label>
-                            <textarea rows="3" class="usersInput access-textarea" placeholder="По одному оператору на строку"></textarea>
+                            <label class="control-label">${t('operators')}</label>
+                            <textarea rows="3" class="usersInput access-textarea" placeholder="${t('onePerLine')}"></textarea>
                         </div>
                         <div class="control-group">
-                            <label class="control-label">Действие:</label>
+                            <label class="control-label">${t('action')}</label>
                             <select class="actionSelect access-select">
-                                <option value="1">Включить доступ</option>
-                                <option value="0">Отключить доступ</option>
+                                <option value="1">${t('enableAccess')}</option>
+                                <option value="0">${t('disableAccess')}</option>
                             </select>
                         </div>
                         <div class="control-group projects-or-category">
-                            <label class="control-label">Категория (шаблон):</label>
+                            <label class="control-label">${t('category')}</label>
                             <select class="categorySelect access-select"></select>
                         </div>
                     </div>
                 </div>
-                <button id="addFieldButton" class="access-button secondary-button">+ Добавить поле настроек</button>
+                <button id="addFieldButton" class="access-button secondary-button">${t('addField')}</button>
             </div>
 
             <div class="progress-container" id="progressContainer">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div class="progress-text" id="progressText">Обработано: 0 / 0</div>
+                <div class="progress-text" id="progressText">${t('processed')} 0 / 0</div>
             </div>
 
             <div class="progress-container" id="checkProgressContainer" style="display: none;">
                 <div class="progress-bar">
                     <div class="progress-fill-check" id="checkProgressFill"></div>
                 </div>
-                <div class="progress-text" id="checkProgressText">Проверено: 0 / 0</div>
+                <div class="progress-text" id="checkProgressText">${t('checked')} 0 / 0</div>
             </div>
 
             <div class="divider"></div>
 
             <div class="button-container" style="flex-direction: column; gap: 10px;">
-                <button id="confirmButton" class="access-button success-button" style="width: 100%;">Применить</button>
-                <button id="checkAccessButton" class="access-button secondary-button" style="width: 100%; display: none;">🔍 Проверить доступы</button>
-                <button id="applyMissingButton" class="access-button success-button" style="width: 100%; display: none;">✅ Проставить оставшиеся</button>
+                <button id="confirmButton" class="access-button success-button" style="width: 100%;">${t('apply')}</button>
+                <button id="checkAccessButton" class="access-button secondary-button" style="width: 100%; display: none;">${t('checkAccess')}</button>
+                <button id="applyMissingButton" class="access-button success-button" style="width: 100%; display: none;">${t('applyMissing')}</button>
             </div>
 
             <div id="checkResultsContainer" style="display: none; margin-top: 15px; padding: 15px; border-radius: 12px; background: #f9fafb; border: 2px solid var(--border-color);">
-                <div style="font-weight: 700; font-size: 14px; margin-bottom: 10px; color: var(--text-color);">Результаты проверки:</div>
+                <div style="font-weight: 700; font-size: 14px; margin-bottom: 10px; color: var(--text-color);">${t('checkResults')}</div>
                 <div id="checkResultsContent" style="font-size: 13px; color: var(--text-muted);"></div>
             </div>
         `;
@@ -1135,32 +1599,32 @@
         searchPanel.className = 'operator-search-panel';
         searchPanel.innerHTML = `
             <div class="panel-header">
-                <h3 class="panel-title">Поиск</h3>
+                <h3 class="panel-title">${t('search')}</h3>
             </div>
 
                 <div style="display:flex; gap:10px; align-items:center; justify-content:flex-start;">
                     <label style="display:flex; align-items:center; gap:8px; font-weight:600;">
                         <input type="checkbox" id="categorySearchToggle" class="access-checkbox">
-                        Поиск по категориям
+                        ${t('searchByCategories')}
                     </label>
                 </div>
 
             <div class="search-controls-wrapper" style="display: flex; gap: 15px; align-items: stretch;">
                 <div class="search-section" style="flex: 1; display: flex; flex-direction: column;">
-                    <label class="control-label" style="font-weight: bold; font-size: 15px; margin-bottom: 8px; display: block;">Список операторов</label>
+                    <label class="control-label" style="font-weight: bold; font-size: 15px; margin-bottom: 8px; display: block;">${t('operatorsList')}</label>
                     <div class="control-group" style="flex-grow: 1;">
-                        <textarea id="operatorAccessSearchTextarea" rows="3" class="access-textarea" placeholder="Логины операторов, по одному на строку"></textarea>
+                        <textarea id="operatorAccessSearchTextarea" rows="3" class="access-textarea" placeholder="${t('onePerLine')}"></textarea>
                     </div>
-                    <button id="runOperatorAccessSearchBtn" class="access-button success-button" style="width: 100%; margin-top: 5px;">Найти</button>
+                    <button id="runOperatorAccessSearchBtn" class="access-button success-button" style="width: 100%; margin-top: 5px;">${t('find')}</button>
                 </div>
 
                 <div class="search-section" style="flex: 1; display: flex; flex-direction: column;">
-                    <label class="control-label" style="font-weight: bold; font-size: 15px; margin-bottom: 8px; display: block;">Список колонок</label>
+                    <label class="control-label" style="font-weight: bold; font-size: 15px; margin-bottom: 8px; display: block;">${t('columnsList')}</label>
                     <div class="control-group" style="flex-grow: 1;">
-                        <input type="text" id="searchColumnsInput" class="access-input" placeholder="Номера колонок">
-                        <span class="hint-text">Оставьте пустым для группировки</span>
+                        <input type="text" id="searchColumnsInput" class="access-input" placeholder="${t('columnNumbers')}">
+                        <span class="hint-text">${t('leaveEmpty')}</span>
                     </div>
-                    <button id="runOperatorSearchBtn" class="access-button success-button" style="width: 100%; margin-top: 5px;">Найти</button>
+                    <button id="runOperatorSearchBtn" class="access-button success-button" style="width: 100%; margin-top: 5px;">${t('find')}</button>
                 </div>
             </div>
 
@@ -1189,11 +1653,11 @@
             pasteModal.style.display = 'none';
             pasteModal.style.width = '640px';
             pasteModal.innerHTML = `
-                <div style="font-weight:700; margin-bottom:8px;">Вставьте шаблон (пример в документации)</div>
+                <div style="font-weight:700; margin-bottom:8px;">${t('pasteTemplate')}</div>
                 <textarea id="pasteTemplateTextarea" rows="14" style="width:100%; box-sizing:border-box;"></textarea>
                 <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
-                    <button id="applyPasteBtn" class="access-button success-button">Применить</button>
-                    <button id="cancelPasteBtn" class="access-button secondary-button">Отмена</button>
+                    <button id="applyPasteBtn" class="access-button success-button">${t('applyBtn')}</button>
+                    <button id="cancelPasteBtn" class="access-button secondary-button">${t('cancelBtn')}</button>
                 </div>`;
             document.body.appendChild(pasteModal);
 
@@ -1204,7 +1668,7 @@
             document.getElementById('applyPasteBtn').addEventListener('click', () => {
                 const text = document.getElementById('pasteTemplateTextarea').value || '';
                 try { const parsed = parseTemplateText(text); applyParsedTemplate(parsed); hidePasteModal(); }
-                catch (err) { alert('Ошибка разбора шаблона: ' + (err && err.message ? err.message : err)); }
+                catch (err) { alert(t('errorParsingTemplate') + ' ' + (err && err.message ? err.message : err)); }
             });
 
             setTimeout(() => {
@@ -1215,7 +1679,7 @@
                     clipBtn.className = 'access-button secondary-button';
                     clipBtn.style.padding = '5px 8px';
                     clipBtn.style.fontSize = '12px';
-                    clipBtn.title = 'Вставить шаблон';
+                    clipBtn.title = t('pasteTemplate');
                     clipBtn.textContent = '📋';
                     showBtn.parentElement.insertBefore(clipBtn, showBtn.nextSibling);
                     clipBtn.addEventListener('click', showPasteModal);
@@ -1264,7 +1728,7 @@
         const settings = GM_getValue(swap);
         if (!settings || !settings.encryptedKey || !settings.secret) {
             confirmButton.disabled = true;
-            confirmButton.textContent = 'Параметры не заданы';
+            confirmButton.textContent = t('parametersNotSet');
         }
 
         document.getElementById('closeButton').addEventListener('click', () => {
@@ -1354,7 +1818,7 @@
         toggleButton.addEventListener('click', () => {
             const isVisible = namesList.style.display !== 'none';
             namesList.style.display = isVisible ? 'none' : 'block';
-            toggleButton.innerHTML = isVisible ? '📋 Показать проекты' : '📂 Скрыть проекты';
+            toggleButton.innerHTML = isVisible ? t('showProjects') : t('hideProjects');
         });
 
         selectAllButton.addEventListener('click', () => {
@@ -2758,7 +3222,7 @@
             const percent = Math.round((current / total) * 100);
 
             progressFill.style.width = `${percent}%`;
-            progressText.textContent = `Обработано: ${current} / ${total}`;
+            progressText.textContent = `${t('processed')} ${current} / ${total}`;
         }
 
         // Функция для обновления прогресса проверки
@@ -2768,7 +3232,7 @@
             const percent = Math.round((current / total) * 100);
 
             progressFill.style.width = `${percent}%`;
-            progressText.textContent = `Проверено: ${current} / ${total}`;
+            progressText.textContent = `${t('checked')} ${current} / ${total}`;
         }
 
         // Обработчик подтверждения настроек
@@ -2781,7 +3245,7 @@
                 const use15Columns = document.getElementById('columnRangeToggle').checked;
 
                 if (!selectedLinks.length) {
-                    alert("Выберите хотя бы одну таблицу.");
+                    alert(t('selectProject'));
                     return;
                 }
 
@@ -2802,19 +3266,18 @@
                 });
 
                 if (blocksData.some(data => (!data.columns.length && data.columnsInput !== 'all') || (!data.users.length && !data.users.includes('all')))) {
-                    alert("Заполните все поля колонок и операторов.");
+                    alert(t('fillAllFields'));
                     return;
                 }
 
                 sessionStorage.setItem('selectedLinks', JSON.stringify(selectedLinks));
                 sessionStorage.setItem('blocksData', JSON.stringify(blocksData));
 
-                alert("Начинается обработка в медленном режиме...");
+                alert(t('processing') + "...");
                 window.location.href = selectedLinks[0];
 
             } else {
-                // --- ЛОГИКА НОВОЙ ВЕРСИИ (СЕРВЕР) ---
-                // ПОЛНОСТЬЮ КОПИРУЕМ ЛОГИКУ ИЗ ОРИГИНАЛЬНОГО СКРИПТА PROZVON.JS
+                // --- ЛОГИКА НОВОЙ ВЕРСИИ (API) ---
                 const settings = GM_getValue(swap);
                 const serverUrl = getServerUrl();
 
@@ -2824,7 +3287,7 @@
                 }
 
                 if (!settings || !settings.encryptedKey || !settings.secret) {
-                    alert("Параметры доступа или ключ расшифровки не найдены. Пожалуйста, установите их через меню Tampermonkey.");
+                    alert(t('settingsNotFound'));
                     return;
                 }
 
@@ -2833,11 +3296,10 @@
                     top = decrypt(settings.encryptedKey, settings.secret);
                     if (!top) throw new Error("Результат расшифровки - пустая строка.");
                 } catch (e) {
-                    alert(`Ошибка при расшифровке токена: ${e.message}. Убедитесь, что вы ввели правильные зашифрованные данные и ключ расшифровки.`);
+                    alert(`${t('decryptError')} ${e.message}`);
                     return;
                 }
 
-                // ТОЧНАЯ КОПИЯ ЛОГИКИ ИЗ PROZVON.JS (строки 2800-2950)
                 const selectedProjects = Array.from(document.querySelectorAll('#namesList input[type="checkbox"]:checked'))
                     .map(cb => ({
                         subdomain: cb.value,
@@ -2849,7 +3311,7 @@
                 const allColumns = Object.keys(columnMap).map(Number);
 
                 if (!selectedProjects.length) {
-                    alert("Выберите хотя бы один проект.");
+                    alert(t('selectProject'));
                     return;
                 }
 
@@ -2914,7 +3376,7 @@
                 }
 
                 if (blocksData.some(data => !data.columns.length || !data.users.length)) {
-                    alert("Заполните все поля колонок и операторов.");
+                    alert(t('fillAllFields'));
                     return;
                 }
 
